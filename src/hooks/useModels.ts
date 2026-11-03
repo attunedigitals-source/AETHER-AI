@@ -1,16 +1,23 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { VerifiedFreeModel, AUTO_FREE_MODEL, AUTO_MODEL_ID } from '../types';
+import {
+  VerifiedFreeModel,
+  OPENROUTER_FREE_MODEL,
+  OPENROUTER_FREE_ROUTER_ID,
+  AUTO_FREE_MODEL,
+  AUTO_MODEL_ID,
+} from '../types';
 import { api } from '../lib/storage';
 
-export { AUTO_MODEL_ID, AUTO_FREE_MODEL };
+export { AUTO_MODEL_ID, AUTO_FREE_MODEL, OPENROUTER_FREE_MODEL, OPENROUTER_FREE_ROUTER_ID };
 
 export function useModels() {
-  const [models, setModels] = useState<VerifiedFreeModel[]>([AUTO_FREE_MODEL]);
+  const [models, setModels] = useState<VerifiedFreeModel[]>([OPENROUTER_FREE_MODEL]);
   const [selectedModelId, setSelectedModelId] = useState<string>(() => {
-    return localStorage.getItem('aether_selected_model') || AUTO_MODEL_ID;
+    return localStorage.getItem('aether_selected_model') || OPENROUTER_FREE_ROUTER_ID;
   });
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -44,20 +51,27 @@ export function useModels() {
         return a.name.localeCompare(b.name);
       });
 
-      // Always place AUTO_FREE_MODEL at the very top of the list
-      const listWithAuto = [
-        AUTO_FREE_MODEL,
-        ...sorted.filter((m) => m.id !== AUTO_MODEL_ID),
+      // Always place OPENROUTER_FREE_MODEL at the very top of the list
+      const listWithRouter = [
+        OPENROUTER_FREE_MODEL,
+        ...sorted.filter((m) => m.id !== OPENROUTER_FREE_ROUTER_ID && m.id !== 'auto:free' && m.id !== 'auto'),
       ];
 
-      setModels(listWithAuto);
+      setModels(listWithRouter);
+      setLastRefreshedAt(new Date());
 
-      // Verify that selected model is still in the free list or auto
-      if (selectedModelId !== AUTO_MODEL_ID && selectedModelId !== 'auto') {
+      // Verify that selected model is still in the free list or auto router
+      const isAuto =
+        selectedModelId === OPENROUTER_FREE_ROUTER_ID ||
+        selectedModelId === AUTO_MODEL_ID ||
+        selectedModelId === 'auto' ||
+        selectedModelId === 'auto:free';
+
+      if (!isAuto) {
         const found = sorted.some((m) => m.id === selectedModelId);
         if (!found || selectedModelId.includes('flint')) {
-          setSelectedModelId(AUTO_MODEL_ID);
-          localStorage.setItem('aether_selected_model', AUTO_MODEL_ID);
+          setSelectedModelId(OPENROUTER_FREE_ROUTER_ID);
+          localStorage.setItem('aether_selected_model', OPENROUTER_FREE_ROUTER_ID);
         }
       }
     } catch (err: any) {
@@ -69,9 +83,33 @@ export function useModels() {
     }
   }, [selectedModelId]);
 
+  // Initial load
   useEffect(() => {
     loadModels(false);
   }, []);
+
+  // Periodic background auto-refresh every 3 minutes so available models are always fresh
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadModels(true);
+    }, 3 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [loadModels]);
+
+  // Auto-refresh when tab is focused / becomes visible
+  useEffect(() => {
+    const handleFocus = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        loadModels(false);
+      }
+    };
+    window.addEventListener('visibilitychange', handleFocus);
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.removeEventListener('visibilitychange', handleFocus);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [loadModels]);
 
   const handleSelectModel = useCallback((modelId: string) => {
     setSelectedModelId(modelId);
@@ -104,10 +142,15 @@ export function useModels() {
   }, [filteredModels]);
 
   const selectedModel = useMemo(() => {
-    if (selectedModelId === AUTO_MODEL_ID || selectedModelId === 'auto') {
-      return AUTO_FREE_MODEL;
+    if (
+      selectedModelId === OPENROUTER_FREE_ROUTER_ID ||
+      selectedModelId === AUTO_MODEL_ID ||
+      selectedModelId === 'auto' ||
+      selectedModelId === 'auto:free'
+    ) {
+      return OPENROUTER_FREE_MODEL;
     }
-    return models.find((m) => m.id === selectedModelId) || AUTO_FREE_MODEL;
+    return models.find((m) => m.id === selectedModelId) || OPENROUTER_FREE_MODEL;
   }, [models, selectedModelId]);
 
   return {
@@ -118,6 +161,7 @@ export function useModels() {
     selectedModelId,
     selectModel: handleSelectModel,
     refreshModels: () => loadModels(true),
+    lastRefreshedAt,
     isLoading,
     isRefreshing,
     error,

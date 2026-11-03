@@ -9,8 +9,8 @@ import {
   Check,
   Zap,
 } from 'lucide-react';
-import { VerifiedFreeModel, AUTO_MODEL_ID } from '../../types';
-import { formatContextLength } from '../../lib/utils';
+import { VerifiedFreeModel, OPENROUTER_FREE_ROUTER_ID, AUTO_MODEL_ID } from '../../types';
+import { formatContextLength, formatDateRelative } from '../../lib/utils';
 
 interface ModelSelectorProps {
   models: VerifiedFreeModel[];
@@ -18,6 +18,7 @@ interface ModelSelectorProps {
   onSelectModel: (modelId: string) => void;
   onRefreshModels: () => void;
   isRefreshing: boolean;
+  lastRefreshedAt?: Date | null;
   onOpenModelInfo?: () => void;
 }
 
@@ -27,13 +28,19 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   onSelectModel,
   onRefreshModels,
   isRefreshing,
+  lastRefreshedAt,
   onOpenModelInfo,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const isAuto = selectedModelId === AUTO_MODEL_ID || selectedModelId === 'auto';
+  const isAuto =
+    selectedModelId === OPENROUTER_FREE_ROUTER_ID ||
+    selectedModelId === AUTO_MODEL_ID ||
+    selectedModelId === 'auto' ||
+    selectedModelId === 'auto:free';
+
   const selectedModel = models.find((m) => m.id === selectedModelId) || models[0];
 
   // Close on outside click
@@ -47,10 +54,16 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Filter out auto from normal provider list so auto is featured cleanly at top
-  const nonAutoModels = models.filter((m) => m.id !== AUTO_MODEL_ID && m.id !== 'auto');
+  // Filter out router from normal list so it's cleanly featured at top
+  const nonRouterModels = models.filter(
+    (m) =>
+      m.id !== OPENROUTER_FREE_ROUTER_ID &&
+      m.id !== AUTO_MODEL_ID &&
+      m.id !== 'auto' &&
+      m.id !== 'auto:free'
+  );
 
-  const filtered = nonAutoModels.filter((m) => {
+  const filtered = nonRouterModels.filter((m) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return (
@@ -84,8 +97,8 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
         ) : (
           <Sparkles className="w-3.5 h-3.5 text-claude-coral shrink-0" />
         )}
-        <span className="font-semibold max-w-[155px] truncate">
-          {isAuto ? 'Auto (Smart Free Router)' : selectedModel?.name || 'Select Free Model'}
+        <span className="font-semibold max-w-[165px] truncate">
+          {isAuto ? 'openrouter/free (Auto)' : selectedModel?.name || 'Select Free Model'}
         </span>
         <span
           className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-medium ${
@@ -94,7 +107,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
               : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
           }`}
         >
-          {isAuto ? 'auto' : 'free'}
+          {isAuto ? 'router' : 'free'}
         </span>
         <ChevronDown className={`w-3.5 h-3.5 text-warm-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
@@ -105,9 +118,16 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
           {/* Header with Search & Refresh */}
           <div className="p-3 border-b border-warm-150 dark:border-warm-800 bg-warm-50 dark:bg-warm-850/50">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-warm-700 dark:text-warm-300">
-                Verified Free Models ({models.length})
-              </span>
+              <div>
+                <span className="text-xs font-semibold text-warm-700 dark:text-warm-300 block">
+                  Verified Free Models ({models.length})
+                </span>
+                {lastRefreshedAt && (
+                  <span className="text-[10px] text-warm-400">
+                    Live synced {formatDateRelative(lastRefreshedAt.toISOString())}
+                  </span>
+                )}
+              </div>
               <div className="flex items-center space-x-1">
                 {onOpenModelInfo && (
                   <button
@@ -125,10 +145,10 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                   onClick={onRefreshModels}
                   disabled={isRefreshing}
                   title="Discover latest free models from OpenRouter"
-                  className="flex items-center space-x-1 px-2 py-1 rounded-md text-[11px] font-medium text-claude-coral hover:bg-warm-200/50 dark:hover:bg-warm-800 disabled:opacity-50"
+                  className="flex items-center space-x-1 px-2 py-1 rounded-md text-[11px] font-medium text-claude-coral hover:bg-warm-200/50 dark:hover:bg-warm-800 disabled:opacity-50 transition-colors"
                 >
                   <RotateCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
-                  <span>Refresh</span>
+                  <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
                 </button>
               </div>
             </div>
@@ -146,11 +166,11 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
             </div>
           </div>
 
-          {/* Featured Auto-Select Option */}
+          {/* Featured Official OpenRouter Free Router */}
           <div className="p-2 border-b border-warm-150 dark:border-warm-800 bg-amber-500/5">
             <button
               onClick={() => {
-                onSelectModel(AUTO_MODEL_ID);
+                onSelectModel(OPENROUTER_FREE_ROUTER_ID);
                 setIsOpen(false);
               }}
               className={`w-full text-left p-2.5 rounded-xl transition-all flex items-start justify-between border ${
@@ -163,14 +183,14 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                 <div className="flex items-center space-x-1.5">
                   <Zap className="w-4 h-4 text-amber-500 fill-amber-500 shrink-0" />
                   <span className="text-xs font-bold text-warm-900 dark:text-warm-50">
-                    Auto (Smart Free Router)
+                    Free Models Router (openrouter/free)
                   </span>
                   <span className="px-1.5 py-0.2 rounded text-[9px] bg-amber-500/20 text-amber-700 dark:text-amber-300 font-semibold uppercase">
-                    Auto-Failover
+                    Official Router
                   </span>
                 </div>
                 <p className="text-[11px] text-warm-500 dark:text-warm-400 mt-1 leading-snug">
-                  Automatically routes to the best available free model. Instant seamless switch if any rate limit is reached.
+                  Official OpenRouter router that automatically selects available free models with vision, tool calling, and zero-downtime rate limit failover.
                 </p>
               </div>
               {isAuto && <Check className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />}
@@ -238,7 +258,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 
           {/* Footer note */}
           <div className="p-2 border-t border-warm-150 dark:border-warm-800 bg-warm-50 dark:bg-warm-850/50 text-[10px] text-warm-500 text-center">
-            ⚡ Automatic Rate-Limit Failover Active: Never get blocked by model limits
+            ⚡ Automatic Rate-Limit Failover Active: Auto-refreshes every 3 minutes
           </div>
         </div>
       )}

@@ -40,19 +40,22 @@ export interface VerifiedFreeModel {
   verified_at: string;
 }
 
-export const AUTO_MODEL_ID = 'auto:free';
+export const OPENROUTER_FREE_ROUTER_ID = 'openrouter/free';
+export const AUTO_MODEL_ID = 'openrouter/free';
 
-export const AUTO_FREE_MODEL: VerifiedFreeModel = {
-  id: AUTO_MODEL_ID,
-  name: 'Auto (Smart Free Router)',
-  description: 'Automatically picks the fastest available free model and auto-switches if any rate limit is reached.',
+export const OPENROUTER_FREE_MODEL: VerifiedFreeModel = {
+  id: OPENROUTER_FREE_ROUTER_ID,
+  name: 'Free Models Router (openrouter/free)',
+  description: 'Official OpenRouter router that automatically selects available free models with vision, tool calling, and rate-limit intelligence.',
   context_length: 131072,
-  provider: 'Auto Router',
+  provider: 'OpenRouter',
   is_free: true,
   supports_vision: true,
   pricing: { prompt: 0, completion: 0 },
   verified_at: new Date().toISOString(),
 };
+
+export const AUTO_FREE_MODEL: VerifiedFreeModel = OPENROUTER_FREE_MODEL;
 
 export interface ValidationResult {
   isValid: boolean;
@@ -62,7 +65,7 @@ export interface ValidationResult {
 /**
  * Strict validator for OpenRouter Free Models.
  * Follows the fail-closed principle: any doubt, missing pricing, non-zero pricing,
- * or ID not ending in ':free' is instantly rejected.
+ * or ID not ending in ':free' is instantly rejected, with official exception for 'openrouter/free'.
  */
 export class FreeModelValidator {
   /**
@@ -78,21 +81,22 @@ export class FreeModelValidator {
     }
 
     const trimmedId = model.id.trim();
+    const lower = trimmedId.toLowerCase();
 
-    // Support Auto Router virtual model
-    if (trimmedId.toLowerCase() === 'auto' || trimmedId.toLowerCase() === 'auto:free') {
+    // 1. Support official OpenRouter Free Models Router and auto alias
+    if (lower === 'openrouter/free' || lower === 'auto' || lower === 'auto:free') {
       return { isValid: true };
     }
 
-    // 1. Strict suffix check: ID must explicitly end with ':free'
-    if (!trimmedId.toLowerCase().endsWith(':free')) {
+    // 2. Strict suffix check: ID must explicitly end with ':free'
+    if (!lower.endsWith(':free')) {
       return {
         isValid: false,
         reason: `Model ID '${trimmedId}' does not end with the mandatory ':free' suffix.`,
       };
     }
 
-    // 2. Strict pricing verification: prompt and completion must both be 0
+    // 3. Strict pricing verification: prompt and completion must both be 0
     if (model.pricing) {
       const promptCost = Number(model.pricing.prompt);
       const completionCost = Number(model.pricing.completion);
@@ -127,6 +131,10 @@ export class FreeModelValidator {
    * Transform raw OpenRouter model into a validated Free Model entity.
    */
   static formatVerifiedModel(raw: RawOpenRouterModel): VerifiedFreeModel {
+    if (raw.id.toLowerCase() === 'openrouter/free') {
+      return OPENROUTER_FREE_MODEL;
+    }
+
     // Provider extraction: usually before the '/' in "meta-llama/llama-3.3-70b-instruct:free"
     const parts = raw.id.split('/');
     const providerSlug = parts.length > 1 ? parts[0] : 'OpenRouter';

@@ -30,6 +30,7 @@ export const AppLayout: React.FC = () => {
     selectModel,
     refreshModels,
     isRefreshing,
+    lastRefreshedAt,
   } = useModels();
 
   // Projects hook
@@ -175,6 +176,7 @@ export const AppLayout: React.FC = () => {
           onSelectModel={selectModel}
           onRefreshModels={refreshModels}
           isRefreshing={isRefreshing}
+          lastRefreshedAt={lastRefreshedAt}
           onOpenModelInfo={() => setIsModelInfoOpen(true)}
           onOpenModelCompare={() => setIsModelCompareOpen(true)}
           onOpenShare={() => setIsShareOpen(true)}

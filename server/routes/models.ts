@@ -21,7 +21,8 @@ router.get('/', async (req, res) => {
       success: true,
       data: models,
       total: models.length,
-      note: 'All models verified strictly for zero prompt and completion pricing with :free suffix.',
+      refreshed_at: new Date(openRouterService.getLastFetchTime() || Date.now()).toISOString(),
+      note: 'All models verified strictly for zero prompt and completion pricing with :free suffix or openrouter/free router.',
     });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -62,4 +63,3 @@ router.get('/:id(*)', async (req, res) => {
 });
 
 export default router;
-

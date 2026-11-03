@@ -7,9 +7,12 @@ test('OpenRouterService: Verifies free models cache correctly', async () => {
   const models = await openRouterService.getVerifiedFreeModels(false);
   assert.ok(models.length > 0, 'Should have initial verified free models');
 
-  // Verify all returned models are 100% free and have :free suffix
+  // Verify all returned models are 100% free and have :free suffix or are the official free router
   for (const model of models) {
-    assert.ok(model.id.endsWith(':free'), `Model ${model.id} must end with :free`);
+    assert.ok(
+      model.id.endsWith(':free') || model.id === 'openrouter/free',
+      `Model ${model.id} must end with :free or be openrouter/free`
+    );
     assert.equal(model.is_free, true);
     assert.equal(model.pricing.prompt, 0);
     assert.equal(model.pricing.completion, 0);
@@ -27,7 +30,10 @@ test('OpenRouterService: Strictly rejects paid model IDs (Fail-Closed)', async (
   assert.equal(isArbitraryEligible, false, 'Unverified models without :free suffix must be rejected');
 });
 
-test('OpenRouterService: Approves verified free model IDs', async () => {
+test('OpenRouterService: Approves verified free model IDs and openrouter/free router', async () => {
+  const isRouterEligible = await openRouterService.isModelEligibleFree('openrouter/free');
+  assert.equal(isRouterEligible, true, 'openrouter/free router must be approved');
+
   const models = await openRouterService.getVerifiedFreeModels(false);
   assert.ok(models.length > 0);
   const sampleModel = models[0];

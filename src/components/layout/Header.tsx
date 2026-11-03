@@ -28,6 +28,7 @@ interface HeaderProps {
   activeProject: Project | null;
   onEditProject?: (project: Project) => void;
   onToggleSidebarMobile: () => void;
+  lastRefreshedAt?: Date | null;
   theme: Theme;
   onToggleTheme: () => void;
 }
@@ -39,6 +40,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectModel,
   onRefreshModels,
   isRefreshing,
+  lastRefreshedAt,
   onOpenModelInfo,
   onOpenModelCompare,
   onOpenShare,
@@ -134,6 +136,7 @@ export const Header: React.FC<HeaderProps> = ({
           onSelectModel={onSelectModel}
           onRefreshModels={onRefreshModels}
           isRefreshing={isRefreshing}
+          lastRefreshedAt={lastRefreshedAt}
           onOpenModelInfo={onOpenModelInfo}
         />
 

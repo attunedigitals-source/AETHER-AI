@@ -1,5 +1,13 @@
 import { config } from '../config.js';
-import { FreeModelValidator, VerifiedFreeModel, RawOpenRouterModel, AUTO_FREE_MODEL, AUTO_MODEL_ID } from './modelValidator.js';
+import {
+  FreeModelValidator,
+  VerifiedFreeModel,
+  RawOpenRouterModel,
+  OPENROUTER_FREE_MODEL,
+  OPENROUTER_FREE_ROUTER_ID,
+  AUTO_FREE_MODEL,
+  AUTO_MODEL_ID,
+} from './modelValidator.js';
 import { Response } from 'express';
 
 export interface ChatMessage {
@@ -34,6 +42,7 @@ export interface StreamChatPayload {
 
 // Fallback verified free models list if network is completely offline during initial cold boot
 const INITIAL_VERIFIED_FREE_MODELS: VerifiedFreeModel[] = [
+  OPENROUTER_FREE_MODEL,
   {
     id: 'nvidia/nemotron-3-ultra-550b-a55b:free',
     name: 'Nemotron 3 Ultra',
@@ -149,14 +158,18 @@ const INITIAL_VERIFIED_FREE_MODELS: VerifiedFreeModel[] = [
 class OpenRouterService {
   private verifiedModelsCache: Map<string, VerifiedFreeModel> = new Map();
   private lastFetchTime: number = 0;
-  private readonly CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+  private readonly CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes dynamic cache for fresh model tracking
   private modelCooldowns: Map<string, number> = new Map(); // modelId -> cooldown expiration timestamp
 
   constructor() {
-    // Seed initial cache
+    // Seed initial cache with official router and top fallback models
     for (const m of INITIAL_VERIFIED_FREE_MODELS) {
       this.verifiedModelsCache.set(m.id, m);
     }
+  }
+
+  getLastFetchTime(): number {
+    return this.lastFetchTime;
   }
 
   /**
@@ -182,7 +195,7 @@ class OpenRouterService {
 
   /**
    * Retrieves all verified free models from OpenRouter dynamically.
-   * Strictly filters out any model not ending in ':free' or with non-zero pricing.
+   * Regularly refreshes the list to capture new free models.
    */
   async getVerifiedFreeModels(forceRefresh = false, customConfig?: ClientOpenRouterConfig): Promise<VerifiedFreeModel[]> {
     const now = Date.now();
@@ -222,6 +235,9 @@ class OpenRouterService {
 
       const newMap = new Map<string, VerifiedFreeModel>();
 
+      // Always include official OpenRouter Free Models Router at index 0
+      newMap.set(OPENROUTER_FREE_ROUTER_ID, OPENROUTER_FREE_MODEL);
+
       for (const raw of rawModels) {
         const validation = FreeModelValidator.validateModel(raw);
         if (validation.isValid) {
@@ -233,7 +249,7 @@ class OpenRouterService {
       if (newMap.size > 0) {
         this.verifiedModelsCache = newMap;
         this.lastFetchTime = now;
-        console.log(`[OpenRouter] Successfully verified ${newMap.size} free models.`);
+        console.log(`[OpenRouter] Successfully verified and refreshed ${newMap.size} free models.`);
       }
 
       return Array.from(this.verifiedModelsCache.values());
@@ -245,12 +261,12 @@ class OpenRouterService {
 
   /**
    * Checks if a model ID is strictly free.
-   * Supports 'auto' and 'auto:free'.
+   * Supports 'openrouter/free', 'auto', and 'auto:free'.
    */
   async isModelEligibleFree(modelId: string, customConfig?: ClientOpenRouterConfig): Promise<boolean> {
-    if (!modelId) return true; // defaults to auto:free
+    if (!modelId) return true; // defaults to openrouter/free
     const lower = modelId.trim().toLowerCase();
-    if (lower === 'auto' || lower === 'auto:free') {
+    if (lower === 'openrouter/free' || lower === 'auto' || lower === 'auto:free') {
       return true;
     }
     if (!lower.endsWith(':free')) {
@@ -269,8 +285,8 @@ class OpenRouterService {
    * Returns a specific verified free model or null.
    */
   async getModel(modelId: string): Promise<VerifiedFreeModel | null> {
-    if (!modelId || modelId === AUTO_MODEL_ID || modelId === 'auto') {
-      return AUTO_FREE_MODEL;
+    if (!modelId || modelId === OPENROUTER_FREE_ROUTER_ID || modelId === AUTO_MODEL_ID || modelId === 'auto') {
+      return OPENROUTER_FREE_MODEL;
     }
     if (this.verifiedModelsCache.has(modelId)) {
       return this.verifiedModelsCache.get(modelId)!;
@@ -289,7 +305,9 @@ class OpenRouterService {
   }
 
   /**
-   * Generates candidate models ordered by priority and health (skipping models in rate-limit cooldown).
+   * Generates candidate models ordered by priority and health.
+   * When openrouter/free (or auto) is selected, openrouter/free is tried first,
+   * followed immediately by individual top verified free models as rate-limit failovers.
    */
   async getCandidateModels(
     requestedModelId: string,
@@ -297,7 +315,11 @@ class OpenRouterService {
     customConfig?: ClientOpenRouterConfig
   ): Promise<VerifiedFreeModel[]> {
     const allModels = await this.getVerifiedFreeModels(false, customConfig);
-    const isAuto = !requestedModelId || requestedModelId === 'auto' || requestedModelId === AUTO_MODEL_ID;
+    const isAutoOrRouter =
+      !requestedModelId ||
+      requestedModelId === 'auto' ||
+      requestedModelId === 'auto:free' ||
+      requestedModelId === OPENROUTER_FREE_ROUTER_ID;
 
     // Filter by vision requirement if images are attached
     let eligible = allModels;
@@ -310,6 +332,7 @@ class OpenRouterService {
 
     // Ordered list of top-performing reliable free models
     const PRIORITY_ORDER = [
+      'openrouter/free',
       'nvidia/nemotron-3-ultra-550b-a55b:free',
       'meta-llama/llama-3.3-70b-instruct:free',
       'deepseek/deepseek-chat:free',
@@ -324,8 +347,11 @@ class OpenRouterService {
 
     const sortScore = (m: VerifiedFreeModel) => {
       // If user selected a specific model, prioritize it unless it is already known to be in cooldown
-      if (!isAuto && m.id === requestedModelId) {
+      if (!isAutoOrRouter && m.id === requestedModelId) {
         return this.isModelInCooldown(m.id) ? 500 : -1000;
+      }
+      if (isAutoOrRouter && m.id === OPENROUTER_FREE_ROUTER_ID) {
+        return this.isModelInCooldown(m.id) ? 300 : -1000;
       }
       // Move models currently in cooldown down the list
       if (this.isModelInCooldown(m.id)) return 1000;
@@ -336,7 +362,7 @@ class OpenRouterService {
     const sorted = [...eligible].sort((a, b) => sortScore(a) - sortScore(b));
 
     // If requested model wasn't in cache but has valid :free suffix, insert it as first candidate
-    if (!isAuto && !sorted.some((m) => m.id === requestedModelId) && requestedModelId.endsWith(':free')) {
+    if (!isAutoOrRouter && !sorted.some((m) => m.id === requestedModelId) && requestedModelId.endsWith(':free')) {
       const fallbackName = requestedModelId.split('/').pop()?.replace(':free', '') || requestedModelId;
       const requestedObj: VerifiedFreeModel = {
         id: requestedModelId,
@@ -475,7 +501,7 @@ class OpenRouterService {
 
   /**
    * Streams a chat completion via Server-Sent Events (SSE).
-   * AUTOMATIC RATE-LIMIT FAILOVER: If any model returns 429 (rate limit) or 502/503/504,
+   * AUTOMATIC RATE-LIMIT FAILOVER: If openrouter/free or any model returns 429 (rate limit) or 502/503/504,
    * automatically fails over to the next healthy verified free model without interruption or manual intervention.
    */
   async streamChat(payload: StreamChatPayload, res: Response, abortSignal?: AbortSignal) {
@@ -542,7 +568,12 @@ When asked to create, deliver, or export a file (such as script_*.txt, image_pro
       return;
     }
 
-    const isAuto = !modelId || modelId === 'auto' || modelId === AUTO_MODEL_ID;
+    const isAutoOrRouter =
+      !modelId ||
+      modelId === 'auto' ||
+      modelId === 'auto:free' ||
+      modelId === OPENROUTER_FREE_ROUTER_ID;
+
     const attemptedModels: string[] = [];
     let switchedFrom: string | null = null;
     const maxAttempts = Math.min(candidates.length, 5);
@@ -617,12 +648,10 @@ When asked to create, deliver, or export a file (such as script_*.txt, image_pro
         }
 
         // Successfully connected to candidate model!
-        const didAutoSwitch = switchedFrom || isAuto || candidate.id !== modelId;
+        const didAutoSwitch = switchedFrom || (candidate.id !== modelId && !isAutoOrRouter);
         if (didAutoSwitch) {
-          const originalName = switchedFrom ? (candidates.find((c) => c.id === switchedFrom)?.name || switchedFrom) : (isAuto ? 'Auto-Select' : modelId);
-          const switchReason = switchedFrom
-            ? `Rate limit reached on ${originalName}. Automatically switched to ${candidate.name} without interruption.`
-            : `Automatically selected ${candidate.name} as the best available free model.`;
+          const originalName = switchedFrom ? (candidates.find((c) => c.id === switchedFrom)?.name || switchedFrom) : modelId;
+          const switchReason = `Rate limit reached on ${originalName}. Automatically switched to ${candidate.name} without interruption.`;
 
           res.write(
             `data: ${JSON.stringify({
@@ -637,10 +666,12 @@ When asked to create, deliver, or export a file (such as script_*.txt, image_pro
           );
         }
 
-        // Stream response chunks
+        // Stream response chunks and capture underlying routed model if openrouter/free
         const reader = response.body.getReader();
         const decoder = new TextDecoder('utf-8');
         let buffer = '';
+        let actualAssignedModel = candidate.id;
+        let notifiedAssignedModel = false;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -662,6 +693,25 @@ When asked to create, deliver, or export a file (such as script_*.txt, image_pro
 
             try {
               const parsed = JSON.parse(dataStr);
+              // OpenRouter passes the actual underlying selected model in parsed.model
+              if (parsed.model && parsed.model !== actualAssignedModel) {
+                actualAssignedModel = parsed.model;
+                if (!notifiedAssignedModel && currentModelId === OPENROUTER_FREE_ROUTER_ID) {
+                  notifiedAssignedModel = true;
+                  res.write(
+                    `data: ${JSON.stringify({
+                      model_switched: {
+                        from: OPENROUTER_FREE_ROUTER_ID,
+                        to: actualAssignedModel,
+                        model_name: actualAssignedModel,
+                        provider: 'OpenRouter Free Router',
+                        reason: `OpenRouter Free Models Router automatically assigned ${actualAssignedModel}.`,
+                      },
+                    })}\n\n`
+                  );
+                }
+              }
+
               const delta = parsed.choices?.[0]?.delta?.content || '';
               const finishReason = parsed.choices?.[0]?.finish_reason;
 
@@ -670,8 +720,8 @@ When asked to create, deliver, or export a file (such as script_*.txt, image_pro
                   `data: ${JSON.stringify({
                     content: delta,
                     finish_reason: finishReason,
-                    model_id: candidate.id,
-                    model_name: candidate.name,
+                    model_id: actualAssignedModel,
+                    model_name: actualAssignedModel,
                   })}\n\n`
                 );
                 (res as any).flush?.();
