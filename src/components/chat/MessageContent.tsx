@@ -17,11 +17,12 @@ export const MessageContent: React.FC<MessageContentProps> = ({ content }) => {
         rehypePlugins={[rehypeKatex]}
         components={{
           code({ node, inline, className, children, ...props }: any) {
-            const match = /language-(\w+)/.exec(className || '');
+            const rawLang = className?.replace(/^language-/, '') || '';
             const codeString = String(children).replace(/\n$/, '');
+            const meta = node?.data?.meta || props?.metastring || '';
 
-            if (!inline && (match || codeString.includes('\n'))) {
-              return <CodeBlock language={match ? match[1] : ''} code={codeString} />;
+            if (!inline && (className || codeString.includes('\n') || meta)) {
+              return <CodeBlock language={rawLang} code={codeString} meta={meta} />;
             }
 
             return (
@@ -93,4 +94,3 @@ export const MessageContent: React.FC<MessageContentProps> = ({ content }) => {
     </div>
   );
 };
-

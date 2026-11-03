@@ -176,11 +176,21 @@ export function useChat({
       setIsStreaming(true);
       setStreamingContent('');
 
-      // Build system prompt combination
-      const systemPrompts = [];
-      if (globalInstructions?.trim()) systemPrompts.push(globalInstructions.trim());
-      if (projectInstructions?.trim()) systemPrompts.push(projectInstructions.trim());
-      const combinedSystemPrompt = systemPrompts.join('\n\n---\n\n');
+      // Build system prompt combination with deliverable capability directive
+      const buildCombinedSystemPrompt = () => {
+        const prompts: string[] = [];
+        if (globalInstructions?.trim()) prompts.push(globalInstructions.trim());
+        if (projectInstructions?.trim()) {
+          const sanitized = projectInstructions.replace(
+            /If you cannot create an actual downloadable file in the current environment[\s\S]*?state the limitation briefly\./gi,
+            'Deliver the complete narration script inside a downloadable file block named script_[short_topic_slug].txt. The chat environment automatically provides a 1-click Download button for the file.'
+          );
+          prompts.push(sanitized.trim());
+        }
+        return prompts.join('\n\n---\n\n');
+      };
+
+      const combinedSystemPrompt = buildCombinedSystemPrompt();
 
       const controller = new AbortController();
       abortControllerRef.current = controller;
@@ -325,6 +335,17 @@ export function useChat({
       abortControllerRef.current = controller;
 
       try {
+        const prompts: string[] = [];
+        if (globalInstructions?.trim()) prompts.push(globalInstructions.trim());
+        if (projectInstructions?.trim()) {
+          const sanitized = projectInstructions.replace(
+            /If you cannot create an actual downloadable file in the current environment[\s\S]*?state the limitation briefly\./gi,
+            'Deliver the complete narration script inside a downloadable file block named script_[short_topic_slug].txt. The chat environment automatically provides a 1-click Download button for the file.'
+          );
+          prompts.push(sanitized.trim());
+        }
+        const combinedSystemPrompt = prompts.join('\n\n---\n\n');
+
         const response = await fetch('/api/chat/stream', {
           method: 'POST',
           headers: getHeaders(),
@@ -335,6 +356,7 @@ export function useChat({
               content: m.content,
               attachments: m.attachments,
             })),
+            systemPrompt: combinedSystemPrompt,
           }),
           signal: controller.signal,
         });

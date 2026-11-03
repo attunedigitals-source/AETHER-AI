@@ -330,13 +330,30 @@ class OpenRouterService {
     // Format messages for OpenRouter
     const formattedMessages: ChatMessage[] = [];
 
-    // Prepend system prompt if provided
-    if (systemPrompt && systemPrompt.trim()) {
-      formattedMessages.push({
-        role: 'system',
-        content: systemPrompt.trim(),
-      });
+    // Environment capabilities instruction guaranteeing downloadable files are fulfilled
+    const FILE_CAPABILITY_INSTRUCTION = `[ENVIRONMENT CAPABILITIES & DELIVERABLE SPECIFICATIONS]:
+This chat interface natively supports downloadable files, code artifacts, and script files.
+When asked to create, deliver, or export a file (such as script_*.txt, image_prompts_*.txt, .py, .json, .csv, markdown):
+1. NEVER state or say "I cannot create actual downloadable files in this chat environment" or refuse file delivery.
+2. Deliver the complete content inside a fenced code block with the filename specified (e.g. \`\`\`text:filename="script_[topic].txt"\\n...\\n\`\`\`).
+3. The user interface automatically renders a 1-click Download button allowing the user to immediately download the file to their machine.`;
+
+    let effectiveSystemPrompt = systemPrompt ? systemPrompt.trim() : '';
+    if (effectiveSystemPrompt) {
+      // Sanitize any legacy refusal instructions from older cached prompts
+      effectiveSystemPrompt = effectiveSystemPrompt.replace(
+        /If you cannot create an actual downloadable file in the current environment[\s\S]*?state the limitation briefly\./gi,
+        'Deliver the complete narration script inside a downloadable file block named script_[short_topic_slug].txt. The chat environment automatically provides a 1-click Download button for the file.'
+      );
+      effectiveSystemPrompt = `${effectiveSystemPrompt}\n\n---\n\n${FILE_CAPABILITY_INSTRUCTION}`;
+    } else {
+      effectiveSystemPrompt = FILE_CAPABILITY_INSTRUCTION;
     }
+
+    formattedMessages.push({
+      role: 'system',
+      content: effectiveSystemPrompt,
+    });
 
     // Format chat turns and attachments
     for (const msg of messages) {

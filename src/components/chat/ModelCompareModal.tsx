@@ -70,7 +70,7 @@ export const ModelCompareModal: React.FC<ModelCompareModalProps> = ({
             if (parsed.content) {
               setResponse((prev) => prev + parsed.content);
             }
-          } catch (_) {}
+          } catch (_) { }
         }
       }
     } catch (err: any) {

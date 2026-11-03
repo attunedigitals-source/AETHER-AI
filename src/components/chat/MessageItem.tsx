@@ -11,10 +11,12 @@ import {
   Sparkles,
   Bot,
   Play,
+  Download,
 } from 'lucide-react';
 import { Message, VerifiedFreeModel } from '../../types';
 import { MessageContent } from './MessageContent';
 import { FilePreviewList } from './FilePreviewList';
+import { downloadFile } from '../../lib/utils';
 
 interface MessageItemProps {
   message: Message;
@@ -46,6 +48,12 @@ export const MessageItem: React.FC<MessageItemProps> = ({
     } catch (err) {
       console.error('Failed to copy text:', err);
     }
+  };
+
+  const handleDownloadMessage = () => {
+    const scriptMatch = message.content.match(/(?:script|image_prompts|file)_[a-zA-Z0-9_]+\.(?:txt|md)/i);
+    const filename = scriptMatch ? scriptMatch[0] : `response-${message.id.slice(-6)}.txt`;
+    downloadFile(message.content, filename, 'text/plain');
   };
 
   const handleSaveEdit = () => {
@@ -172,6 +180,15 @@ export const MessageItem: React.FC<MessageItemProps> = ({
               {/* Assistant Actions */}
               {!isUser && (
                 <>
+                  {/* Download response */}
+                  <button
+                    onClick={handleDownloadMessage}
+                    title="Download message as file (.txt)"
+                    className="p-1.5 rounded-md hover:bg-warm-200/60 dark:hover:bg-warm-800 hover:text-warm-700 dark:hover:text-warm-200 transition-colors"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                  </button>
+
                   {/* Regenerate with same model */}
                   <button
                     onClick={() => onRegenerate(message.id)}
@@ -250,4 +267,3 @@ export const MessageItem: React.FC<MessageItemProps> = ({
     </div>
   );
 };
-
