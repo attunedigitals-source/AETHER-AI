@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { VerifiedFreeModel } from '../types';
+import { VerifiedFreeModel, AUTO_FREE_MODEL, AUTO_MODEL_ID } from '../types';
 import { api } from '../lib/storage';
 
+export { AUTO_MODEL_ID, AUTO_FREE_MODEL };
+
 export function useModels() {
-  const [models, setModels] = useState<VerifiedFreeModel[]>([]);
+  const [models, setModels] = useState<VerifiedFreeModel[]>([AUTO_FREE_MODEL]);
   const [selectedModelId, setSelectedModelId] = useState<string>(() => {
-    return localStorage.getItem('aether_selected_model') || 'nvidia/nemotron-3-ultra-550b-a55b:free';
+    return localStorage.getItem('aether_selected_model') || AUTO_MODEL_ID;
   });
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -19,14 +21,18 @@ export function useModels() {
       setError(null);
 
       const data = await api.getModels(refresh);
-      // Prioritize fast, verified and responsive free models
+      // Prioritize fast, verified, and responsive free models
       const preferred = [
         'nvidia/nemotron-3-ultra-550b-a55b:free',
+        'meta-llama/llama-3.3-70b-instruct:free',
+        'deepseek/deepseek-chat:free',
+        'deepseek/deepseek-r1:free',
         'nvidia/nemotron-3.5-lightning:free',
         'dots-studio/dots-3-note-preview:free',
-        'xingchen-agi/xing4.0-29b-a4b:free',
-        'deepseek/deepseek-r1:free',
-        'meta-llama/llama-3.3-70b-instruct:free'
+        'qwen/qwen-2.5-coder-32b-instruct:free',
+        'mistralai/mistral-small-24b-instruct-2501:free',
+        'google/gemini-2.0-flash-exp:free',
+        'google/gemini-2.0-flash-thinking-exp:free',
       ];
 
       const sorted = [...data].sort((a, b) => {
@@ -38,15 +44,20 @@ export function useModels() {
         return a.name.localeCompare(b.name);
       });
 
-      setModels(sorted);
+      // Always place AUTO_FREE_MODEL at the very top of the list
+      const listWithAuto = [
+        AUTO_FREE_MODEL,
+        ...sorted.filter((m) => m.id !== AUTO_MODEL_ID),
+      ];
 
-      // Verify that selected model is still in the free list and not a broken upstream
-      if (sorted.length > 0) {
+      setModels(listWithAuto);
+
+      // Verify that selected model is still in the free list or auto
+      if (selectedModelId !== AUTO_MODEL_ID && selectedModelId !== 'auto') {
         const found = sorted.some((m) => m.id === selectedModelId);
         if (!found || selectedModelId.includes('flint')) {
-          const fallback = sorted.find((m) => preferred.includes(m.id))?.id || sorted[0].id;
-          setSelectedModelId(fallback);
-          localStorage.setItem('aether_selected_model', fallback);
+          setSelectedModelId(AUTO_MODEL_ID);
+          localStorage.setItem('aether_selected_model', AUTO_MODEL_ID);
         }
       }
     } catch (err: any) {
@@ -93,7 +104,10 @@ export function useModels() {
   }, [filteredModels]);
 
   const selectedModel = useMemo(() => {
-    return models.find((m) => m.id === selectedModelId) || null;
+    if (selectedModelId === AUTO_MODEL_ID || selectedModelId === 'auto') {
+      return AUTO_FREE_MODEL;
+    }
+    return models.find((m) => m.id === selectedModelId) || AUTO_FREE_MODEL;
   }, [models, selectedModelId]);
 
   return {
@@ -103,12 +117,11 @@ export function useModels() {
     selectedModel,
     selectedModelId,
     selectModel: handleSelectModel,
+    refreshModels: () => loadModels(true),
     isLoading,
     isRefreshing,
     error,
     searchQuery,
     setSearchQuery,
-    refreshModels: () => loadModels(true),
   };
 }
-

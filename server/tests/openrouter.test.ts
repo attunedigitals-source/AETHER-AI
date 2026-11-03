@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { openRouterService } from '../services/openrouter.js';
+import { VerifiedFreeModel } from '../services/modelValidator.js';
 
 test('OpenRouterService: Verifies free models cache correctly', async () => {
   const models = await openRouterService.getVerifiedFreeModels(false);
@@ -37,5 +38,5 @@ test('OpenRouterService: Approves verified free model IDs', async () => {
 test('OpenRouterService: Provides alternative free models on demand', () => {
   const alternatives = openRouterService.getAlternativeFreeModels('meta-llama/llama-3.3-70b-instruct:free');
   assert.ok(alternatives.length > 0, 'Should return alternatives');
-  assert.ok(!alternatives.some((a) => a.id === 'meta-llama/llama-3.3-70b-instruct:free'), 'Should not include the same model');
+  assert.ok(!alternatives.some((a: VerifiedFreeModel) => a.id === 'meta-llama/llama-3.3-70b-instruct:free'), 'Should not include the same model');
 });

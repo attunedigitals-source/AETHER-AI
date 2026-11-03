@@ -13,6 +13,20 @@ export interface VerifiedFreeModel {
   verified_at: string;
 }
 
+export const AUTO_MODEL_ID = 'auto:free';
+
+export const AUTO_FREE_MODEL: VerifiedFreeModel = {
+  id: AUTO_MODEL_ID,
+  name: 'Auto (Smart Free Router)',
+  description: 'Automatically picks the fastest available free model and auto-switches if any rate limit is reached.',
+  context_length: 131072,
+  provider: 'Auto Router',
+  is_free: true,
+  supports_vision: true,
+  pricing: { prompt: 0, completion: 0 },
+  verified_at: new Date().toISOString(),
+};
+
 export interface Attachment {
   id?: string;
   name: string;

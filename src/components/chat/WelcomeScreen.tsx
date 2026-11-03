@@ -12,6 +12,7 @@ import {
   Play,
   Settings,
   Layers,
+  Zap,
 } from 'lucide-react';
 import { Project, VerifiedFreeModel } from '../../types';
 
@@ -137,10 +138,17 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
 
       {/* Badges Bar */}
       <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
-        <div className="flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-medium border border-emerald-500/20">
-          <ShieldCheck className="w-3.5 h-3.5" />
-          <span>Active Free Model: <strong>{selectedModel?.name || 'Nemotron 3 Ultra'}</strong></span>
-        </div>
+        {selectedModel?.id === 'auto:free' || selectedModel?.id === 'auto' ? (
+          <div className="flex items-center space-x-1.5 px-3 py-1 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs font-medium border border-amber-500/20">
+            <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+            <span>Model Routing: <strong>Auto (Smart Free Router)</strong> — Zero-Downtime Failover</span>
+          </div>
+        ) : (
+          <div className="flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-medium border border-emerald-500/20">
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>Active Free Model: <strong>{selectedModel?.name || 'Auto (Smart Free Router)'}</strong></span>
+          </div>
+        )}
 
         {activeProject && (
           <div className="flex items-center space-x-1 px-3 py-1 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs font-medium border border-amber-500/20">

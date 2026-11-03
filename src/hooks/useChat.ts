@@ -233,6 +233,7 @@ export function useChat({
       abortControllerRef.current = controller;
 
       let fullContent = '';
+      let actualModelId = modelToUse;
       try {
         const response = await fetch('/api/chat/stream', {
           method: 'POST',
@@ -277,6 +278,12 @@ export function useChat({
 
             try {
               const parsed = JSON.parse(dataStr);
+              if (parsed.model_switched?.to) {
+                actualModelId = parsed.model_switched.to;
+              } else if (parsed.model_id) {
+                actualModelId = parsed.model_id;
+              }
+
               if (parsed.error) {
                 fullContent += `\n\n> ⚠️ **Notice**: ${parsed.error.message}\n`;
                 setStreamingContent(fullContent);
@@ -292,6 +299,7 @@ export function useChat({
         const finalAssistantMsg: Message = {
           ...assistantMsg,
           content: fullContent,
+          model_id: actualModelId,
           is_interrupted: false,
           versions: [fullContent],
           activeVersionIndex: 0,
@@ -425,6 +433,7 @@ export function useChat({
         const reader = response.body.getReader();
         const decoder = new TextDecoder('utf-8');
         let continuationTokens = '';
+        let actualModelId = modelToUse;
         let buffer = '';
 
         while (true) {
@@ -443,6 +452,12 @@ export function useChat({
 
             try {
               const parsed = JSON.parse(dataStr);
+              if (parsed.model_switched?.to) {
+                actualModelId = parsed.model_switched.to;
+              } else if (parsed.model_id) {
+                actualModelId = parsed.model_id;
+              }
+
               if (parsed.content) {
                 continuationTokens += parsed.content;
                 setStreamingContent(mergeResumedContent(targetMsg.content, continuationTokens));
@@ -455,6 +470,7 @@ export function useChat({
 
         const updatedMsg: Message = {
           ...targetMsg,
+          model_id: actualModelId,
           content: mergedContent,
           is_interrupted: false,
           versions: [...(targetMsg.versions || []), mergedContent],
@@ -526,6 +542,7 @@ export function useChat({
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const reader = response.body!.getReader();
         const decoder = new TextDecoder('utf-8');
+        let actualModelId = modelToUse;
         let buffer = '';
 
         while (true) {
@@ -543,6 +560,12 @@ export function useChat({
             if (dataStr === '[DONE]') continue;
             try {
               const parsed = JSON.parse(dataStr);
+              if (parsed.model_switched?.to) {
+                actualModelId = parsed.model_switched.to;
+              } else if (parsed.model_id) {
+                actualModelId = parsed.model_id;
+              }
+
               if (parsed.content) {
                 fullContent += parsed.content;
                 setStreamingContent(fullContent);
@@ -560,7 +583,7 @@ export function useChat({
               return {
                 ...m,
                 content: fullContent,
-                model_id: modelToUse,
+                model_id: actualModelId,
                 is_interrupted: false,
                 versions: newVersions,
                 activeVersionIndex: newVersions.length - 1,
@@ -576,7 +599,7 @@ export function useChat({
           conversation_id: targetMsg.conversation_id,
           role: 'assistant',
           content: fullContent,
-          model_id: modelToUse,
+          model_id: actualModelId,
         });
       } catch (err: any) {
         if (err.name !== 'AbortError') {

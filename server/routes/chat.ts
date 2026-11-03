@@ -16,9 +16,10 @@ function getUserId(req: Request): string {
 // POST /api/chat/stream - Streaming inference SSE
 router.post('/stream', async (req: Request, res: Response) => {
   const { modelId, messages, systemPrompt, temperature, maxTokens, openrouterConfig } = req.body;
+  const effectiveModelId = modelId || 'auto:free';
 
-  if (!modelId || !messages || !Array.isArray(messages)) {
-    return res.status(400).json({ error: 'Missing modelId or messages array.' });
+  if (!messages || !Array.isArray(messages)) {
+    return res.status(400).json({ error: 'Missing messages array.' });
   }
 
   const customConfig = {
@@ -38,7 +39,7 @@ router.post('/stream', async (req: Request, res: Response) => {
 
   await openRouterService.streamChat(
     {
-      modelId,
+      modelId: effectiveModelId,
       messages,
       systemPrompt,
       temperature,
