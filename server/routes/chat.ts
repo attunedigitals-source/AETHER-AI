@@ -28,10 +28,12 @@ router.post('/stream', async (req: Request, res: Response) => {
     siteUrl: (req.headers['x-openrouter-site-url'] as string) || openrouterConfig?.siteUrl,
   };
 
-  // Handle client abort / disconnect
+  // Handle client disconnect only when the response connection is terminated prematurely
   const abortController = new AbortController();
-  req.on('close', () => {
-    abortController.abort();
+  res.on('close', () => {
+    if (!res.writableEnded) {
+      abortController.abort();
+    }
   });
 
   await openRouterService.streamChat(

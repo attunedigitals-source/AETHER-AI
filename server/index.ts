@@ -9,8 +9,8 @@ import uploadRouter from './routes/upload.js';
 import settingsRouter from './routes/settings.js';
 import { openRouterService } from './services/openrouter.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __filename = typeof import.meta?.url === 'string' ? fileURLToPath(import.meta.url) : '';
+const __dirname = __filename ? path.dirname(__filename) : process.cwd();
 
 const app = express();
 
