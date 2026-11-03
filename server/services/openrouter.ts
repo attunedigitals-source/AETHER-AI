@@ -35,6 +35,39 @@ export interface StreamChatPayload {
 // Fallback verified free models list if network is completely offline during initial cold boot
 const INITIAL_VERIFIED_FREE_MODELS: VerifiedFreeModel[] = [
   {
+    id: 'nvidia/nemotron-3-ultra-550b-a55b:free',
+    name: 'Nemotron 3 Ultra',
+    description: 'NVIDIA 550B flagship reasoning model, highly optimized for rapid high-quality dialogue.',
+    context_length: 65536,
+    provider: 'Nvidia',
+    is_free: true,
+    supports_vision: false,
+    pricing: { prompt: 0, completion: 0 },
+    verified_at: new Date().toISOString(),
+  },
+  {
+    id: 'nvidia/nemotron-3.5-lightning:free',
+    name: 'Nemotron 3.5 Lightning',
+    description: 'Ultra-fast low-latency free assistant model from NVIDIA.',
+    context_length: 32768,
+    provider: 'Nvidia',
+    is_free: true,
+    supports_vision: false,
+    pricing: { prompt: 0, completion: 0 },
+    verified_at: new Date().toISOString(),
+  },
+  {
+    id: 'dots-studio/dots-3-note-preview:free',
+    name: 'Dots 3 Note Preview',
+    description: 'Lightweight free model tuned for notes, drafting and creative workflows.',
+    context_length: 16384,
+    provider: 'Dots Studio',
+    is_free: true,
+    supports_vision: false,
+    pricing: { prompt: 0, completion: 0 },
+    verified_at: new Date().toISOString(),
+  },
+  {
     id: 'meta-llama/llama-3.3-70b-instruct:free',
     name: 'Llama 3.3 70B Instruct',
     description: 'Meta state-of-the-art 70B parameter open model with 128k context window.',
@@ -192,7 +225,7 @@ class OpenRouterService {
    * Checks if a model ID is strictly free.
    * If not currently in cache, attempts dynamic re-verification from OpenRouter.
    */
-  async isModelEligibleFree(modelId: string): Promise<boolean> {
+  async isModelEligibleFree(modelId: string, customConfig?: ClientOpenRouterConfig): Promise<boolean> {
     if (!modelId || !modelId.trim().toLowerCase().endsWith(':free')) {
       return false;
     }
@@ -202,7 +235,7 @@ class OpenRouterService {
     }
 
     // Try refreshing cache in case it's a newly released free model
-    await this.getVerifiedFreeModels(true);
+    await this.getVerifiedFreeModels(true, customConfig);
     return this.verifiedModelsCache.has(modelId);
   }
 
@@ -281,7 +314,7 @@ class OpenRouterService {
     const { modelId, messages, systemPrompt, temperature = 0.7, maxTokens = 4096 } = payload;
 
     // Fail-closed enforcement: Re-verify model eligibility
-    const isFree = await this.isModelEligibleFree(modelId);
+    const isFree = await this.isModelEligibleFree(modelId, payload.customConfig);
     if (!isFree) {
       res.status(403).json({
         error: {
@@ -409,15 +442,19 @@ class OpenRouterService {
         const alternatives = this.getAlternativeFreeModels(modelId);
 
         if (statusCode === 429) {
-          userMessage = `The free model **${modelInfo?.name || modelId}** is temporarily experiencing high demand or has reached its free tier rate limit. OpenRouter imposes per-minute and per-day caps on free endpoints.\n\n**Suggested Alternative Free Models:**\n` +
+          userMessage = `The free model **${modelInfo?.name || modelId}** is temporarily experiencing high demand or has reached its free tier rate limit.\n\n**Suggested Working Alternative Free Models:**\n` +
             alternatives.map((a) => `- **${a.name}** (\`${a.id}\`)`).join('\n') +
-            `\n\nYou can switch models in the dropdown above and continue your conversation seamlessly.`;
+            `\n\nPlease switch models in the dropdown above to continue seamlessly.`;
+        } else if (statusCode === 503 || statusCode === 502) {
+          userMessage = `The free model **${modelInfo?.name || modelId}** has temporarily unreachable upstream providers (HTTP ${statusCode}).\n\n**Fast Working Alternative Free Models:**\n` +
+            alternatives.map((a) => `- **${a.name}** (\`${a.id}\`)`).join('\n') +
+            `\n\nSwitch to **Nemotron 3 Ultra** in the top dropdown for instant responses.`;
         } else if (statusCode === 401) {
-          userMessage = `OpenRouter API Authentication failed (HTTP 401). Please verify your \`OPENROUTER_API_KEY\` in your environment settings.`;
+          userMessage = `OpenRouter API Authentication failed (HTTP 401). Please verify your API key in Settings > OpenRouter API.`;
         } else if (statusCode === 404) {
           userMessage = `Model **${modelId}** is currently unavailable on OpenRouter. Please select another verified free model from the dropdown.`;
         } else if (statusCode === 400 && errorData.error?.message) {
-          userMessage = `Request rejected: ${errorData.error.message}`;
+          userMessage = `Request rejected by OpenRouter: ${errorData.error.message}`;
         }
 
         res.write(
@@ -427,9 +464,11 @@ class OpenRouterService {
               message: userMessage,
               alternatives,
             },
+            content: `\n\n> ⚠️ **Notice**: ${userMessage}\n`,
           })}\n\n`
         );
         res.write('data: [DONE]\n\n');
+        (res as any).flush?.();
         res.end();
         return;
       }
@@ -472,6 +511,7 @@ class OpenRouterService {
                   finish_reason: finishReason,
                 })}\n\n`
               );
+              (res as any).flush?.();
             }
           } catch (e) {
             // ignore partial JSON parse errors

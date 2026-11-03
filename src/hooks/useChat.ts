@@ -241,6 +241,11 @@ export function useChat({
           }
         }
 
+        // If stream finished without any tokens, alert user with recommended action
+        if (!fullContent.trim()) {
+          fullContent = `> ⚠️ **Notice**: The selected free model did not return any tokens. It may be currently offline or rate-limited on OpenRouter.\n\n**Recommended Action:**\n- Switch to **Nemotron 3 Ultra** (nvidia/nemotron-3-ultra-550b-a55b:free) or **Dots 3 Note** in the model selector above.\n- Click **Regenerate** to retry.`;
+        }
+
         // Finalize assistant message
         const finalAssistantMsg: Message = {
           ...assistantMsg,
