@@ -179,8 +179,8 @@ export function useChat({
       // Build system prompt combination
       const systemPrompts = [];
       if (globalInstructions?.trim()) systemPrompts.push(globalInstructions.trim());
-      if (projectInstructions?.trim()) systemPrompts.push(`[Project Context]:\n${projectInstructions.trim()}`);
-      const combinedSystemPrompt = systemPrompts.join('\n\n');
+      if (projectInstructions?.trim()) systemPrompts.push(projectInstructions.trim());
+      const combinedSystemPrompt = systemPrompts.join('\n\n---\n\n');
 
       const controller = new AbortController();
       abortControllerRef.current = controller;

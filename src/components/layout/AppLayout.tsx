@@ -158,6 +158,8 @@ export const AppLayout: React.FC = () => {
             <WelcomeScreen
               selectedModel={selectedModel}
               onSelectPrompt={(text) => setSelectedPrompt(text)}
+              activeProject={activeProject}
+              onEditProject={() => setIsProjectModalOpen(true)}
             />
           ) : (
             <MessageList
