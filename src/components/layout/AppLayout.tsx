@@ -90,8 +90,14 @@ export const AppLayout: React.FC = () => {
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'general' | 'ai' | 'openrouter' | 'data'>('general');
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [selectedPrompt, setSelectedPrompt] = useState<string>('');
+
+  const handleOpenSettings = (tab: 'general' | 'ai' | 'openrouter' | 'data' = 'general') => {
+    setSettingsTab(tab);
+    setIsSettingsOpen(true);
+  };
 
   const handleClearAllChats = async () => {
     await api.deleteAllConversations();
@@ -115,7 +121,7 @@ export const AppLayout: React.FC = () => {
         activeProjectId={activeProjectId}
         onSelectProject={setActiveProjectId}
         onOpenNewProject={() => setIsProjectModalOpen(true)}
-        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenSettings={() => handleOpenSettings('general')}
         onOpenAuth={() => setIsAuthOpen(true)}
         searchQuery={searchFilter}
         onSearchChange={setSearchFilter}
@@ -126,7 +132,7 @@ export const AppLayout: React.FC = () => {
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0 h-full relative">
         {/* API Key Missing Banner */}
-        <ApiKeySetupBanner onOpenSettings={() => setIsSettingsOpen(true)} />
+        <ApiKeySetupBanner onOpenSettings={(tab) => handleOpenSettings(tab || 'openrouter')} />
 
         {/* Top Header */}
         <Header
@@ -213,6 +219,7 @@ export const AppLayout: React.FC = () => {
         theme={theme}
         onSetTheme={setTheme}
         onClearAllChats={handleClearAllChats}
+        initialTab={settingsTab}
       />
 
       <AuthModal

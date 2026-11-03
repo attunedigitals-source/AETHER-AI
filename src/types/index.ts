@@ -81,3 +81,10 @@ export interface UserProfile {
   avatar_url?: string;
 }
 
+export interface OpenRouterConfig {
+  apiKey: string;
+  baseUrl: string;
+  appName: string;
+  siteUrl: string;
+}
+

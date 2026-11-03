@@ -1,4 +1,4 @@
-import { Conversation, Message, Project, UserSettings, VerifiedFreeModel, Attachment } from '../types';
+import { Conversation, Message, Project, UserSettings, VerifiedFreeModel, Attachment, OpenRouterConfig } from '../types';
 
 const API_BASE = '/api';
 
@@ -11,10 +11,55 @@ function getUserId(): string {
   return userId;
 }
 
-const getHeaders = (): HeadersInit => ({
-  'Content-Type': 'application/json',
-  'x-user-id': getUserId(),
-});
+export function getOpenRouterConfig(): OpenRouterConfig {
+  try {
+    const raw = localStorage.getItem('aether_openrouter_config');
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch (_) {}
+
+  return {
+    apiKey: '',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    appName: 'Aether AI',
+    siteUrl: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173',
+  };
+}
+
+export function saveOpenRouterConfig(config: Partial<OpenRouterConfig>): OpenRouterConfig {
+  const current = getOpenRouterConfig();
+  const updated = { ...current, ...config };
+  localStorage.setItem('aether_openrouter_config', JSON.stringify(updated));
+  return updated;
+}
+
+export function clearOpenRouterConfig() {
+  localStorage.removeItem('aether_openrouter_config');
+}
+
+export const getHeaders = (): Record<string, string> => {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'x-user-id': getUserId(),
+  };
+
+  const orConfig = getOpenRouterConfig();
+  if (orConfig.apiKey?.trim()) {
+    headers['x-openrouter-key'] = orConfig.apiKey.trim();
+  }
+  if (orConfig.baseUrl?.trim()) {
+    headers['x-openrouter-base-url'] = orConfig.baseUrl.trim();
+  }
+  if (orConfig.appName?.trim()) {
+    headers['x-openrouter-app-name'] = orConfig.appName.trim();
+  }
+  if (orConfig.siteUrl?.trim()) {
+    headers['x-openrouter-site-url'] = orConfig.siteUrl.trim();
+  }
+
+  return headers;
+};
 
 export const api = {
   // Models
@@ -173,8 +218,19 @@ export const api = {
     return json.data;
   },
 
-  async testOpenRouter(): Promise<{ success: boolean; message: string; modelCount?: number }> {
-    const res = await fetch(`${API_BASE}/settings/test-openrouter`, { headers: getHeaders() });
+  async testOpenRouter(customConfig?: Partial<OpenRouterConfig>): Promise<{ success: boolean; message: string; modelCount?: number }> {
+    const cfg = customConfig ? { ...getOpenRouterConfig(), ...customConfig } : getOpenRouterConfig();
+    const headers = { ...getHeaders() };
+    if (cfg.apiKey) headers['x-openrouter-key'] = cfg.apiKey;
+    if (cfg.baseUrl) headers['x-openrouter-base-url'] = cfg.baseUrl;
+    if (cfg.appName) headers['x-openrouter-app-name'] = cfg.appName;
+    if (cfg.siteUrl) headers['x-openrouter-site-url'] = cfg.siteUrl;
+
+    const res = await fetch(`${API_BASE}/settings/test-openrouter`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(cfg),
+    });
     return res.json();
   },
 };

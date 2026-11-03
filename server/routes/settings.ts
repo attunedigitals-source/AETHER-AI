@@ -42,15 +42,24 @@ router.patch('/', async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/settings/test-openrouter - Test connection to OpenRouter
-router.get('/test-openrouter', async (_req: Request, res: Response) => {
+// GET & POST /api/settings/test-openrouter - Test connection to OpenRouter
+const handleTestOpenRouter = async (req: Request, res: Response) => {
   try {
-    const result = await openRouterService.testConnection();
+    const customConfig = {
+      apiKey: (req.headers['x-openrouter-key'] as string) || req.body?.apiKey,
+      baseUrl: (req.headers['x-openrouter-base-url'] as string) || req.body?.baseUrl,
+      appName: (req.headers['x-openrouter-app-name'] as string) || req.body?.appName,
+      siteUrl: (req.headers['x-openrouter-site-url'] as string) || req.body?.siteUrl,
+    };
+    const result = await openRouterService.testConnection(customConfig);
     res.json(result);
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
-});
+};
+
+router.get('/test-openrouter', handleTestOpenRouter);
+router.post('/test-openrouter', handleTestOpenRouter);
 
 // GET /api/settings/export - Export conversation & project data
 router.get('/export', async (req: Request, res: Response) => {

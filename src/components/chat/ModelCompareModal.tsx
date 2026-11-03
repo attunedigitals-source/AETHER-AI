@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Sparkles, Send, Loader2, Bot } from 'lucide-react';
 import { VerifiedFreeModel } from '../../types';
 import { MessageContent } from './MessageContent';
+import { getHeaders } from '../../lib/storage';
 
 interface ModelCompareModalProps {
   isOpen: boolean;
@@ -39,7 +40,7 @@ export const ModelCompareModal: React.FC<ModelCompareModalProps> = ({
 
       const res = await fetch('/api/chat/stream', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(),
         body: JSON.stringify({
           modelId,
           messages: [{ role: 'user', content: prompt }],

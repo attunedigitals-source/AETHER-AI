@@ -15,11 +15,18 @@ function getUserId(req: Request): string {
 
 // POST /api/chat/stream - Streaming inference SSE
 router.post('/stream', async (req: Request, res: Response) => {
-  const { modelId, messages, systemPrompt, temperature, maxTokens } = req.body;
+  const { modelId, messages, systemPrompt, temperature, maxTokens, openrouterConfig } = req.body;
 
   if (!modelId || !messages || !Array.isArray(messages)) {
     return res.status(400).json({ error: 'Missing modelId or messages array.' });
   }
+
+  const customConfig = {
+    apiKey: (req.headers['x-openrouter-key'] as string) || openrouterConfig?.apiKey,
+    baseUrl: (req.headers['x-openrouter-base-url'] as string) || openrouterConfig?.baseUrl,
+    appName: (req.headers['x-openrouter-app-name'] as string) || openrouterConfig?.appName,
+    siteUrl: (req.headers['x-openrouter-site-url'] as string) || openrouterConfig?.siteUrl,
+  };
 
   // Handle client abort / disconnect
   const abortController = new AbortController();
@@ -34,6 +41,7 @@ router.post('/stream', async (req: Request, res: Response) => {
       systemPrompt,
       temperature,
       maxTokens,
+      customConfig,
     },
     res,
     abortController.signal

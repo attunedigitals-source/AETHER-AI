@@ -7,6 +7,13 @@ export interface ChatMessage {
   content: string | Array<{ type: string; text?: string; image_url?: { url: string } }>;
 }
 
+export interface ClientOpenRouterConfig {
+  apiKey?: string;
+  baseUrl?: string;
+  appName?: string;
+  siteUrl?: string;
+}
+
 export interface StreamChatPayload {
   modelId: string;
   messages: Array<{
@@ -22,6 +29,7 @@ export interface StreamChatPayload {
   systemPrompt?: string;
   temperature?: number;
   maxTokens?: number;
+  customConfig?: ClientOpenRouterConfig;
 }
 
 // Fallback verified free models list if network is completely offline during initial cold boot
@@ -121,7 +129,7 @@ class OpenRouterService {
    * Retrieves all verified free models from OpenRouter dynamically.
    * Strictly filters out any model not ending in ':free' or with non-zero pricing.
    */
-  async getVerifiedFreeModels(forceRefresh = false): Promise<VerifiedFreeModel[]> {
+  async getVerifiedFreeModels(forceRefresh = false, customConfig?: ClientOpenRouterConfig): Promise<VerifiedFreeModel[]> {
     const now = Date.now();
     const isCacheExpired = now - this.lastFetchTime > this.CACHE_TTL_MS;
 
@@ -129,17 +137,22 @@ class OpenRouterService {
       return Array.from(this.verifiedModelsCache.values());
     }
 
+    const apiKey = customConfig?.apiKey?.trim() || config.openrouter.apiKey;
+    const baseUrl = customConfig?.baseUrl?.trim() || config.openrouter.baseUrl;
+    const appName = customConfig?.appName?.trim() || config.openrouter.appName;
+    const siteUrl = customConfig?.siteUrl?.trim() || config.openrouter.siteUrl;
+
     try {
       const headers: Record<string, string> = {
-        'HTTP-Referer': config.openrouter.siteUrl,
-        'X-Title': config.openrouter.appName,
+        'HTTP-Referer': siteUrl,
+        'X-Title': appName,
       };
 
-      if (config.openrouter.apiKey) {
-        headers['Authorization'] = `Bearer ${config.openrouter.apiKey}`;
+      if (apiKey) {
+        headers['Authorization'] = `Bearer ${apiKey}`;
       }
 
-      const response = await fetch(`${config.openrouter.baseUrl}/models`, {
+      const response = await fetch(`${baseUrl}/models`, {
         method: 'GET',
         headers,
       });
@@ -216,21 +229,26 @@ class OpenRouterService {
   /**
    * Tests the connection with OpenRouter.
    */
-  async testConnection(): Promise<{ success: boolean; message: string; modelCount?: number }> {
-    if (!config.openrouter.apiKey) {
+  async testConnection(customConfig?: ClientOpenRouterConfig): Promise<{ success: boolean; message: string; modelCount?: number }> {
+    const apiKey = customConfig?.apiKey?.trim() || config.openrouter.apiKey;
+    const baseUrl = customConfig?.baseUrl?.trim() || config.openrouter.baseUrl;
+    const appName = customConfig?.appName?.trim() || config.openrouter.appName;
+    const siteUrl = customConfig?.siteUrl?.trim() || config.openrouter.siteUrl;
+
+    if (!apiKey) {
       return {
         success: false,
-        message: 'No OpenRouter API key configured on the server. Please add OPENROUTER_API_KEY in .env.',
+        message: 'No OpenRouter API key provided. Please enter your key in Settings or add OPENROUTER_API_KEY in .env.',
       };
     }
 
     try {
-      const response = await fetch(`${config.openrouter.baseUrl}/models`, {
+      const response = await fetch(`${baseUrl}/models`, {
         method: 'GET',
         headers: {
-          Authorization: `Bearer ${config.openrouter.apiKey}`,
-          'HTTP-Referer': config.openrouter.siteUrl,
-          'X-Title': config.openrouter.appName,
+          Authorization: `Bearer ${apiKey}`,
+          'HTTP-Referer': siteUrl,
+          'X-Title': appName,
         },
       });
 
@@ -241,7 +259,7 @@ class OpenRouterService {
         };
       }
 
-      const models = await this.getVerifiedFreeModels(true);
+      const models = await this.getVerifiedFreeModels(true, customConfig);
       return {
         success: true,
         message: `Successfully connected to OpenRouter! Discovered ${models.length} active verified free models.`,
@@ -334,12 +352,17 @@ class OpenRouterService {
       });
     }
 
-    if (!config.openrouter.apiKey) {
+    const effectiveApiKey = payload.customConfig?.apiKey?.trim() || config.openrouter.apiKey;
+    const effectiveBaseUrl = payload.customConfig?.baseUrl?.trim() || config.openrouter.baseUrl;
+    const effectiveAppName = payload.customConfig?.appName?.trim() || config.openrouter.appName;
+    const effectiveSiteUrl = payload.customConfig?.siteUrl?.trim() || config.openrouter.siteUrl;
+
+    if (!effectiveApiKey) {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
-      const simulatedMsg = `### OpenRouter API Key Required\n\nTo start chatting with free AI models, please configure your free OpenRouter API key:\n\n1. Visit [OpenRouter Keys](https://openrouter.ai/settings/keys) and create a free key.\n2. Add your key to the project \`.env\` file as \`OPENROUTER_API_KEY=sk-or-v1-...\` or set it in the Settings dialog.\n3. Restart the server or click **Test Connection** in Settings.\n\nAll models ending in \`:free\` have $0 prompt and completion costs!`;
+      const simulatedMsg = `### OpenRouter API Key Required\n\nTo start chatting with free AI models, please configure your free OpenRouter API key:\n\n1. Visit [OpenRouter Keys](https://openrouter.ai/settings/keys) and create a free key.\n2. Open **Settings** (⚙ in the bottom left or top bar) → **OpenRouter API** and enter your key.\n3. Click **Save Preferences**.\n\nAll models ending in \`:free\` have $0 prompt and completion costs!`;
       res.write(`data: ${JSON.stringify({ content: simulatedMsg, finish_reason: 'stop' })}\n\n`);
       res.write('data: [DONE]\n\n');
       res.end();
@@ -353,12 +376,12 @@ class OpenRouterService {
     res.flushHeaders?.();
 
     try {
-      const response = await fetch(`${config.openrouter.baseUrl}/chat/completions`, {
+      const response = await fetch(`${effectiveBaseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${config.openrouter.apiKey}`,
-          'HTTP-Referer': config.openrouter.siteUrl,
-          'X-Title': config.openrouter.appName,
+          Authorization: `Bearer ${effectiveApiKey}`,
+          'HTTP-Referer': effectiveSiteUrl,
+          'X-Title': effectiveAppName,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({

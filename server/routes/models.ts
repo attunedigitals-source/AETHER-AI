@@ -1,12 +1,22 @@
-import { Router } from 'express';
-import { openRouterService } from '../services/openrouter.js';
+import { Router, Request } from 'express';
+import { openRouterService, ClientOpenRouterConfig } from '../services/openrouter.js';
 
 const router = Router();
+
+function getClientConfig(req: Request): ClientOpenRouterConfig {
+  return {
+    apiKey: (req.headers['x-openrouter-key'] as string) || req.body?.apiKey,
+    baseUrl: (req.headers['x-openrouter-base-url'] as string) || req.body?.baseUrl,
+    appName: (req.headers['x-openrouter-app-name'] as string) || req.body?.appName,
+    siteUrl: (req.headers['x-openrouter-site-url'] as string) || req.body?.siteUrl,
+  };
+}
 
 // GET /api/models - Returns all verified free models
 router.get('/', async (req, res) => {
   try {
-    const models = await openRouterService.getVerifiedFreeModels(false);
+    const customConfig = getClientConfig(req);
+    const models = await openRouterService.getVerifiedFreeModels(false, customConfig);
     res.json({
       success: true,
       data: models,
@@ -21,7 +31,8 @@ router.get('/', async (req, res) => {
 // POST /api/models/refresh - Re-fetches models from OpenRouter dynamically
 router.post('/refresh', async (req, res) => {
   try {
-    const models = await openRouterService.getVerifiedFreeModels(true);
+    const customConfig = getClientConfig(req);
+    const models = await openRouterService.getVerifiedFreeModels(true, customConfig);
     res.json({
       success: true,
       data: models,

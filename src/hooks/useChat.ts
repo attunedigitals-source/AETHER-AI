@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Conversation, Message, Attachment } from '../types';
-import { api } from '../lib/storage';
+import { api, getHeaders } from '../lib/storage';
 import { generateId } from '../lib/utils';
 
 interface UseChatProps {
@@ -178,9 +178,7 @@ export function useChat({
       try {
         const response = await fetch('/api/chat/stream', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: getHeaders(),
           body: JSON.stringify({
             modelId: modelToUse,
             messages: updatedMessages.map((m) => ({
@@ -311,7 +309,7 @@ export function useChat({
       try {
         const response = await fetch('/api/chat/stream', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getHeaders(),
           body: JSON.stringify({
             modelId: modelToUse,
             messages: contextMessages.map((m) => ({

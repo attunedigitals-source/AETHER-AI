@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Settings,
@@ -14,10 +14,19 @@ import {
   Moon,
   Sun,
   Laptop,
+  Eye,
+  EyeOff,
+  Globe,
+  RotateCcw,
 } from 'lucide-react';
 import { UserSettings, VerifiedFreeModel } from '../../types';
 import { Theme } from '../../hooks/useTheme';
-import { api } from '../../lib/storage';
+import {
+  api,
+  getOpenRouterConfig,
+  saveOpenRouterConfig,
+  clearOpenRouterConfig,
+} from '../../lib/storage';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -28,6 +37,7 @@ interface SettingsModalProps {
   theme: Theme;
   onSetTheme: (t: Theme) => void;
   onClearAllChats: () => Promise<void>;
+  initialTab?: 'general' | 'ai' | 'openrouter' | 'data';
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -39,14 +49,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   theme,
   onSetTheme,
   onClearAllChats,
+  initialTab = 'general',
 }) => {
-  const [activeTab, setActiveTab] = useState<'general' | 'ai' | 'openrouter' | 'data'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'ai' | 'openrouter' | 'data'>(initialTab);
   const [defaultModel, setDefaultModel] = useState(
     settings?.default_model || 'meta-llama/llama-3.3-70b-instruct:free'
   );
   const [customInstructions, setCustomInstructions] = useState(settings?.custom_instructions || '');
   const [temperature, setTemperature] = useState(settings?.preferences?.temperature ?? 0.7);
   const [enterToSend, setEnterToSend] = useState(settings?.preferences?.enterToSend ?? true);
+
+  // OpenRouter Custom Client Configuration
+  const [apiKey, setApiKey] = useState('');
+  const [baseUrl, setBaseUrl] = useState('https://openrouter.ai/api/v1');
+  const [appName, setAppName] = useState('Aether AI');
+  const [siteUrl, setSiteUrl] = useState(typeof window !== 'undefined' ? window.location.origin : '');
+  const [showApiKey, setShowApiKey] = useState(false);
 
   // OpenRouter test state
   const [testResult, setTestResult] = useState<{
@@ -57,13 +75,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [isTesting, setIsTesting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
+  useEffect(() => {
+    if (isOpen) {
+      const cfg = getOpenRouterConfig();
+      setApiKey(cfg.apiKey || '');
+      setBaseUrl(cfg.baseUrl || 'https://openrouter.ai/api/v1');
+      setAppName(cfg.appName || 'Aether AI');
+      setSiteUrl(cfg.siteUrl || (typeof window !== 'undefined' ? window.location.origin : ''));
+      if (initialTab) {
+        setActiveTab(initialTab);
+      }
+    }
+  }, [isOpen, initialTab]);
+
   if (!isOpen) return null;
 
   const handleTestConnection = async () => {
     try {
       setIsTesting(true);
       setTestResult(null);
-      const res = await api.testOpenRouter();
+      const res = await api.testOpenRouter({
+        apiKey: apiKey.trim(),
+        baseUrl: baseUrl.trim(),
+        appName: appName.trim(),
+        siteUrl: siteUrl.trim(),
+      });
       setTestResult(res);
     } catch (err: any) {
       setTestResult({ success: false, message: err.message });
@@ -72,9 +108,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
+  const handleResetOpenRouterConfig = () => {
+    clearOpenRouterConfig();
+    const defaults = getOpenRouterConfig();
+    setApiKey('');
+    setBaseUrl(defaults.baseUrl);
+    setAppName(defaults.appName);
+    setSiteUrl(typeof window !== 'undefined' ? window.location.origin : '');
+    setTestResult({
+      success: true,
+      message: 'Reset to default OpenRouter settings. Server-side environment variables will be used if configured.',
+    });
+  };
+
   const handleSave = async () => {
     try {
       setIsSaving(true);
+
+      // Save client-side OpenRouter credentials
+      saveOpenRouterConfig({
+        apiKey: apiKey.trim(),
+        baseUrl: baseUrl.trim() || 'https://openrouter.ai/api/v1',
+        appName: appName.trim() || 'Aether AI',
+        siteUrl: siteUrl.trim() || (typeof window !== 'undefined' ? window.location.origin : ''),
+      });
+
+      // Save user database preferences
       await onUpdateSettings({
         default_model: defaultModel,
         custom_instructions: customInstructions,
@@ -84,6 +143,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           enterToSend,
         },
       });
+
       onClose();
     } catch (err) {
       console.error('Failed to save settings:', err);
@@ -296,30 +356,134 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
             {activeTab === 'openrouter' && (
               <div className="space-y-4 text-xs">
-                <div className="p-4 rounded-2xl bg-warm-50 dark:bg-warm-850 border border-warm-200 dark:border-warm-800 space-y-3">
-                  <div className="flex items-center justify-between">
+                {/* Custom API Credentials Box */}
+                <div className="p-4 rounded-2xl bg-warm-50 dark:bg-warm-850 border border-warm-200 dark:border-warm-800 space-y-3.5">
+                  <div className="flex items-center justify-between pb-2 border-b border-warm-200/60 dark:border-warm-800">
                     <div>
-                      <div className="font-semibold text-warm-900 dark:text-warm-100">
-                        OpenRouter Connection
+                      <div className="font-semibold text-warm-900 dark:text-warm-100 text-sm">
+                        Client API Credentials
                       </div>
                       <div className="text-[11px] text-warm-500">
-                        Server-side verified free model proxy
+                        Configure your key and endpoint directly in the browser (no Vercel env setup needed)
                       </div>
                     </div>
+                    {apiKey && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                        Custom Key Active
+                      </span>
+                    )}
+                  </div>
+
+                  {/* API Key */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="font-semibold text-warm-800 dark:text-warm-200 uppercase tracking-wider text-[11px]">
+                        OpenRouter API Key
+                      </label>
+                      <a
+                        href="https://openrouter.ai/settings/keys"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-claude-coral hover:underline inline-flex items-center space-x-0.5 text-[11px]"
+                      >
+                        <span>Get free key</span>
+                        <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type={showApiKey ? 'text' : 'password'}
+                        value={apiKey}
+                        onChange={(e) => setApiKey(e.target.value)}
+                        placeholder="sk-or-v1-..."
+                        className="w-full pl-3.5 pr-10 py-2 rounded-xl bg-white dark:bg-warm-800 border border-warm-200 dark:border-warm-700 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-claude-coral/40"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowApiKey(!showApiKey)}
+                        className="absolute right-2.5 top-2.5 text-warm-400 hover:text-warm-700 dark:hover:text-warm-200"
+                        title={showApiKey ? 'Hide key' : 'Show key'}
+                      >
+                        {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-warm-500 mt-1">
+                      Your key is stored locally in your browser storage and forwarded to the backend proxy for free-model inference.
+                    </p>
+                  </div>
+
+                  {/* Base URL */}
+                  <div>
+                    <label className="block font-semibold text-warm-800 dark:text-warm-200 uppercase tracking-wider text-[11px] mb-1.5">
+                      API Base URL
+                    </label>
+                    <input
+                      type="text"
+                      value={baseUrl}
+                      onChange={(e) => setBaseUrl(e.target.value)}
+                      placeholder="https://openrouter.ai/api/v1"
+                      className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-warm-800 border border-warm-200 dark:border-warm-700 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-claude-coral/40"
+                    />
+                    <p className="text-[10px] text-warm-500 mt-1">
+                      Default is <code>https://openrouter.ai/api/v1</code>. You can customize this if you use an alternative proxy gateway.
+                    </p>
+                  </div>
+
+                  {/* App Name & Site URL */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="block font-medium text-warm-700 dark:text-warm-300 text-[11px] mb-1">
+                        App Name (Header)
+                      </label>
+                      <input
+                        type="text"
+                        value={appName}
+                        onChange={(e) => setAppName(e.target.value)}
+                        placeholder="Aether AI"
+                        className="w-full px-3 py-1.5 rounded-xl bg-white dark:bg-warm-800 border border-warm-200 dark:border-warm-700 text-xs focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-medium text-warm-700 dark:text-warm-300 text-[11px] mb-1">
+                        Site URL (Header)
+                      </label>
+                      <input
+                        type="text"
+                        value={siteUrl}
+                        onChange={(e) => setSiteUrl(e.target.value)}
+                        placeholder="https://..."
+                        className="w-full px-3 py-1.5 rounded-xl bg-white dark:bg-warm-800 border border-warm-200 dark:border-warm-700 text-xs focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Test & Reset Buttons */}
+                  <div className="flex items-center justify-between pt-2">
+                    <button
+                      type="button"
+                      onClick={handleResetOpenRouterConfig}
+                      className="px-3 py-1.5 rounded-xl text-xs font-medium text-warm-600 dark:text-warm-400 hover:bg-warm-200 dark:hover:bg-warm-800 flex items-center space-x-1 transition-colors"
+                      title="Clear custom browser keys and use server environment variables"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Reset to Server Defaults</span>
+                    </button>
+
                     <button
                       type="button"
                       onClick={handleTestConnection}
                       disabled={isTesting}
-                      className="px-3.5 py-1.5 rounded-xl bg-claude-coral hover:bg-claude-coral-hover text-white font-medium flex items-center space-x-1.5 transition-colors disabled:opacity-50"
+                      className="px-3.5 py-1.5 rounded-xl bg-claude-coral hover:bg-claude-coral-hover text-white font-medium flex items-center space-x-1.5 transition-colors disabled:opacity-50 shadow-xs"
                     >
                       <RotateCw className={`w-3.5 h-3.5 ${isTesting ? 'animate-spin' : ''}`} />
-                      <span>{isTesting ? 'Pinging...' : 'Test Connection'}</span>
+                      <span>{isTesting ? 'Verifying...' : 'Test Connection'}</span>
                     </button>
                   </div>
 
+                  {/* Test Result Message */}
                   {testResult && (
                     <div
-                      className={`p-3 rounded-xl border text-xs flex items-start space-x-2 ${
+                      className={`p-3 rounded-xl border text-xs flex items-start space-x-2 animate-in fade-in duration-100 ${
                         testResult.success
                           ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-300'
                           : 'bg-red-500/10 border-red-500/20 text-red-600 dark:text-red-400'
@@ -335,25 +499,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   )}
                 </div>
 
+                {/* Free Tier Notice */}
                 <div className="p-4 rounded-2xl bg-warm-100/60 dark:bg-warm-800/40 border border-warm-200 dark:border-warm-800 space-y-2">
                   <div className="font-semibold text-warm-900 dark:text-warm-100 flex items-center space-x-1.5">
-                    <span>How to configure OpenRouter for Free</span>
-                    <a
-                      href="https://openrouter.ai/settings/keys"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-claude-coral hover:underline inline-flex items-center space-x-0.5"
-                    >
-                      <span>(OpenRouter Keys)</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
+                    <span>How OpenRouter Free Models Work</span>
                   </div>
-                  <ol className="list-decimal pl-4 space-y-1 text-warm-600 dark:text-warm-400">
-                    <li>Create a free account at <strong>openrouter.ai</strong>.</li>
-                    <li>Generate a key at <strong>openrouter.ai/settings/keys</strong>.</li>
-                    <li>Add <code>OPENROUTER_API_KEY=sk-or-v1-...</code> into your project <code>.env</code> file.</li>
-                    <li>The key stays exclusively in your server process and is never exposed in browser JavaScript or logs.</li>
-                  </ol>
+                  <ul className="list-disc pl-4 space-y-1 text-warm-600 dark:text-warm-400">
+                    <li>Create an account at <strong>openrouter.ai</strong> and generate a free API key.</li>
+                    <li>Enter your key above and click <strong>Save Preferences</strong>.</li>
+                    <li>You do not need to add credits or purchase paid tokens: Aether strictly restricts selection to models ending with <code>:free</code> with verified $0 costs.</li>
+                    <li>If deploying to Vercel, this browser settings option removes the need to re-configure environment variables in your Vercel project dashboard.</li>
+                  </ul>
                 </div>
               </div>
             )}

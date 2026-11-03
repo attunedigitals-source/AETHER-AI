@@ -1,22 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { KeyRound, ExternalLink, Settings, X } from 'lucide-react';
+import { getOpenRouterConfig } from '../../lib/storage';
 
 interface ApiKeySetupBannerProps {
-  onOpenSettings: () => void;
+  onOpenSettings: (tab?: 'openrouter') => void;
 }
 
 export const ApiKeySetupBanner: React.FC<ApiKeySetupBannerProps> = ({ onOpenSettings }) => {
-  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
+  const [hasApiKey, setHasApiKey] = useState<boolean | null>(() => {
+    return Boolean(getOpenRouterConfig().apiKey);
+  });
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
+    const localKey = getOpenRouterConfig().apiKey;
+    if (localKey) {
+      setHasApiKey(true);
+      return;
+    }
+
     fetch('/api/health')
       .then((res) => res.json())
       .then((data) => {
-        setHasApiKey(data.has_api_key);
+        setHasApiKey(Boolean(data.has_api_key || getOpenRouterConfig().apiKey));
       })
       .catch(() => {
-        setHasApiKey(false);
+        setHasApiKey(Boolean(getOpenRouterConfig().apiKey));
       });
   }, []);
 
@@ -27,7 +36,7 @@ export const ApiKeySetupBanner: React.FC<ApiKeySetupBannerProps> = ({ onOpenSett
       <div className="flex items-center space-x-2 text-amber-900 dark:text-amber-200">
         <KeyRound className="w-4 h-4 text-claude-coral flex-shrink-0" />
         <span>
-          <strong>OpenRouter API Key Required:</strong> To stream responses with free models, configure your free API key in your <code>.env</code> file.
+          <strong>OpenRouter API Key Required:</strong> To stream free model responses, enter your free API key in <strong>Settings</strong> or add it in your <code>.env</code> file.
         </span>
       </div>
 
@@ -42,11 +51,11 @@ export const ApiKeySetupBanner: React.FC<ApiKeySetupBannerProps> = ({ onOpenSett
           <ExternalLink className="w-3 h-3" />
         </a>
         <button
-          onClick={onOpenSettings}
-          className="px-2.5 py-1 rounded-lg bg-claude-coral hover:bg-claude-coral-hover text-white font-medium flex items-center space-x-1 transition-colors"
+          onClick={() => onOpenSettings('openrouter')}
+          className="px-2.5 py-1 rounded-lg bg-claude-coral hover:bg-claude-coral-hover text-white font-medium flex items-center space-x-1 transition-colors shadow-xs"
         >
           <Settings className="w-3 h-3" />
-          <span>Setup</span>
+          <span>Enter Key</span>
         </button>
         <button
           onClick={() => setDismissed(true)}
