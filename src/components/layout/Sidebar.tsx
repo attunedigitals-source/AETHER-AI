@@ -34,6 +34,8 @@ interface SidebarProps {
   activeProjectId: string | null;
   onSelectProject: (id: string | null) => void;
   onOpenNewProject: () => void;
+  onEditProject?: (project: Project) => void;
+  onDeleteProject?: (projectId: string) => Promise<void> | void;
   onOpenSettings: () => void;
   onOpenAuth: () => void;
   searchQuery: string;
@@ -55,6 +57,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeProjectId,
   onSelectProject,
   onOpenNewProject,
+  onEditProject,
+  onDeleteProject,
   onOpenSettings,
   onOpenAuth,
   searchQuery,
@@ -201,20 +205,56 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <MessageSquare className="w-3.5 h-3.5 text-warm-400" />
                   <span className="truncate">All Conversations</span>
                 </button>
-                {projects.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => onSelectProject(p.id)}
-                    className={`w-full text-left px-2.5 py-1.5 rounded-xl flex items-center space-x-2 transition-colors ${
-                      activeProjectId === p.id
-                        ? 'bg-warm-200/70 dark:bg-warm-800 font-semibold text-warm-900 dark:text-warm-50'
-                        : 'text-warm-600 dark:text-warm-400 hover:bg-warm-200/40 dark:hover:bg-warm-850'
-                    }`}
-                  >
-                    <Folder className="w-3.5 h-3.5 text-amber-500" />
-                    <span className="truncate">{p.name}</span>
-                  </button>
-                ))}
+                {projects.map((p) => {
+                  const isActive = activeProjectId === p.id;
+                  return (
+                    <div
+                      key={p.id}
+                      className={`group relative flex items-center justify-between rounded-xl px-2.5 py-1.5 transition-colors ${
+                        isActive
+                          ? 'bg-warm-200/70 dark:bg-warm-800 font-semibold text-warm-900 dark:text-warm-50'
+                          : 'text-warm-600 dark:text-warm-400 hover:bg-warm-200/40 dark:hover:bg-warm-850'
+                      }`}
+                    >
+                      <button
+                        onClick={() => onSelectProject(p.id)}
+                        className="flex items-center space-x-2 flex-1 min-w-0 text-left"
+                        title={p.description || p.name}
+                      >
+                        <Folder className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                        <span className="truncate">{p.name}</span>
+                      </button>
+                      <div className="flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
+                        {onEditProject && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onEditProject(p);
+                            }}
+                            title="Edit task & instructions"
+                            className="p-1 rounded hover:bg-warm-300/60 dark:hover:bg-warm-700 text-warm-500 hover:text-warm-800 dark:hover:text-warm-200 transition-colors"
+                          >
+                            <Edit3 className="w-3 h-3" />
+                          </button>
+                        )}
+                        {onDeleteProject && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`Delete project "${p.name}"? Existing chats will be preserved.`)) {
+                                onDeleteProject(p.id);
+                              }
+                            }}
+                            title="Delete project"
+                            className="p-1 rounded hover:bg-red-500/10 text-warm-500 hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -233,16 +273,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
 
           {/* Chronologically Grouped Conversations */}
-          {Object.entries(grouped).map(([label, items]) => (
-            <div key={label}>
-              <div className="px-2 py-1 text-warm-400 font-semibold uppercase tracking-wider text-[10px]">
-                {label}
-              </div>
-              <div className="space-y-0.5 mt-1">
-                {items.map((c) => renderConversationItem(c))}
-              </div>
+          {nonArchived.length === 0 ? (
+            <div className="px-4 py-8 text-center text-warm-400 text-xs">
+              <p className="font-medium text-warm-500 mb-1">
+                {activeProjectId ? 'No chats in this project yet' : 'No conversations yet'}
+              </p>
+              <p className="text-[11px] text-warm-400">
+                Click "Start new chat" to begin.
+              </p>
             </div>
-          ))}
+          ) : (
+            Object.entries(grouped).map(([label, items]) => (
+              <div key={label}>
+                <div className="px-2 py-1 text-warm-400 font-semibold uppercase tracking-wider text-[10px]">
+                  {label}
+                </div>
+                <div className="space-y-0.5 mt-1">
+                  {items.map((c) => renderConversationItem(c))}
+                </div>
+              </div>
+            ))
+          )}
 
           {/* Archived Drawer */}
           {archived.length > 0 && (
@@ -409,4 +460,3 @@ export const Sidebar: React.FC<SidebarProps> = ({
     );
   }
 };
-

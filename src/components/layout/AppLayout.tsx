@@ -16,7 +16,7 @@ import { useModels } from '../../hooks/useModels';
 import { useProjects } from '../../hooks/useProjects';
 import { useChat } from '../../hooks/useChat';
 import { useTheme } from '../../hooks/useTheme';
-import { UserSettings } from '../../types';
+import { Project, UserSettings } from '../../types';
 import { api } from '../../lib/storage';
 
 export const AppLayout: React.FC = () => {
@@ -92,6 +92,7 @@ export const AppLayout: React.FC = () => {
   const [isModelCompareOpen, setIsModelCompareOpen] = useState(false);
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'general' | 'ai' | 'openrouter' | 'data'>('general');
   const [isAuthOpen, setIsAuthOpen] = useState(false);
@@ -104,6 +105,35 @@ export const AppLayout: React.FC = () => {
 
   const handleClearAllChats = async () => {
     await deleteAllConversations();
+  };
+
+  const handleOpenNewProject = () => {
+    setEditingProject(null);
+    setIsProjectModalOpen(true);
+  };
+
+  const handleEditProject = (p: Project) => {
+    setEditingProject(p);
+    setIsProjectModalOpen(true);
+  };
+
+  const handleSaveProject = async (name: string, description?: string, custom_instructions?: string) => {
+    if (editingProject) {
+      await updateProject(editingProject.id, { name, description, custom_instructions });
+    } else {
+      const created = await createProject(name, description, custom_instructions);
+      setActiveProjectId(created.id);
+    }
+    setIsProjectModalOpen(false);
+    setEditingProject(null);
+  };
+
+  const handleDeleteProject = async (projectId: string) => {
+    await deleteProject(projectId);
+    if (editingProject?.id === projectId) {
+      setEditingProject(null);
+      setIsProjectModalOpen(false);
+    }
   };
 
   return (
@@ -121,7 +151,9 @@ export const AppLayout: React.FC = () => {
         projects={projects}
         activeProjectId={activeProjectId}
         onSelectProject={setActiveProjectId}
-        onOpenNewProject={() => setIsProjectModalOpen(true)}
+        onOpenNewProject={handleOpenNewProject}
+        onEditProject={handleEditProject}
+        onDeleteProject={handleDeleteProject}
         onOpenSettings={() => handleOpenSettings('general')}
         onOpenAuth={() => setIsAuthOpen(true)}
         searchQuery={searchFilter}
@@ -148,6 +180,7 @@ export const AppLayout: React.FC = () => {
           onOpenShare={() => setIsShareOpen(true)}
           onRenameConversation={renameConversation}
           activeProject={activeProject}
+          onEditProject={handleEditProject}
           onToggleSidebarMobile={() => setIsSidebarOpenMobile(!isSidebarOpenMobile)}
           theme={theme}
           onToggleTheme={toggleTheme}
@@ -167,7 +200,13 @@ export const AppLayout: React.FC = () => {
               selectedModel={selectedModel}
               onSelectPrompt={(text) => setSelectedPrompt(text)}
               activeProject={activeProject}
-              onEditProject={() => setIsProjectModalOpen(true)}
+              onEditProject={() => {
+                if (activeProject) {
+                  handleEditProject(activeProject);
+                } else {
+                  handleOpenNewProject();
+                }
+              }}
             />
           ) : (
             <MessageList
@@ -216,11 +255,14 @@ export const AppLayout: React.FC = () => {
       />
 
       <ProjectModal
+        project={editingProject}
         isOpen={isProjectModalOpen}
-        onClose={() => setIsProjectModalOpen(false)}
-        onSave={async (name, description, instructions) => {
-          await createProject(name, description, instructions);
+        onClose={() => {
+          setIsProjectModalOpen(false);
+          setEditingProject(null);
         }}
+        onSave={handleSaveProject}
+        onDelete={handleDeleteProject}
       />
 
       <SettingsModal

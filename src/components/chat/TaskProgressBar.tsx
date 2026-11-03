@@ -127,3 +127,4 @@ export const TaskProgressBar: React.FC<TaskProgressBarProps> = ({
     </div>
   );
 };
+

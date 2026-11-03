@@ -8,6 +8,8 @@ import {
   mergeResumedContent,
 } from '../lib/taskFramework';
 
+const ACTIVE_CONVERSATION_KEY = 'aether_active_conversation_id';
+
 interface UseChatProps {
   selectedModelId: string;
   activeProjectId: string | null;
@@ -22,7 +24,25 @@ export function useChat({
   globalInstructions,
 }: UseChatProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [activeConversationId, setActiveConversationIdState] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(ACTIVE_CONVERSATION_KEY) || null;
+    } catch (_) {
+      return null;
+    }
+  });
+
+  const setActiveConversationId = useCallback((id: string | null) => {
+    setActiveConversationIdState(id);
+    try {
+      if (id) {
+        localStorage.setItem(ACTIVE_CONVERSATION_KEY, id);
+      } else {
+        localStorage.removeItem(ACTIVE_CONVERSATION_KEY);
+      }
+    } catch (_) {}
+  }, []);
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
@@ -43,12 +63,15 @@ export function useChat({
       setIsLoadingConversations(true);
       const data = await api.getConversations();
       setConversations(data);
+      if (activeConversationId && !data.some((c) => c.id === activeConversationId)) {
+        setActiveConversationId(null);
+      }
     } catch (err) {
       console.error('Failed to load conversations:', err);
     } finally {
       setIsLoadingConversations(false);
     }
-  }, []);
+  }, [activeConversationId, setActiveConversationId]);
 
   useEffect(() => {
     loadConversations();
@@ -88,30 +111,27 @@ export function useChat({
   const startNewChat = useCallback(() => {
     if (isStreaming) {
       abortControllerRef.current?.abort();
-      setIsStreaming(false);
     }
-    skipLoadMessagesRef.current = null;
     setActiveConversationId(null);
     setMessages([]);
     setStreamingContent('');
-  }, [isStreaming]);
+    setIsStreaming(false);
+  }, [isStreaming, setActiveConversationId]);
 
-  // Select conversation
+  // Select existing conversation
   const selectConversation = useCallback(
     (id: string) => {
-      if (id === activeConversationId) return;
       if (isStreaming) {
         abortControllerRef.current?.abort();
-        setIsStreaming(false);
       }
-      skipLoadMessagesRef.current = null;
       setActiveConversationId(id);
       setStreamingContent('');
+      setIsStreaming(false);
     },
-    [activeConversationId, isStreaming]
+    [isStreaming, setActiveConversationId]
   );
 
-  // Stop active streaming generation
+  // Stop ongoing streaming generation
   const stopGeneration = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -120,13 +140,21 @@ export function useChat({
     setIsStreaming(false);
   }, []);
 
-  // Helper to compile system prompts with framework continuity
+  // Build combined system prompt
   const buildSystemPrompt = useCallback(() => {
     const prompts: string[] = [];
-    if (globalInstructions?.trim()) prompts.push(globalInstructions.trim());
+
+    prompts.push(
+      'You are Aether AI, a sophisticated, thoughtful, and highly capable AI research and creative assistant.'
+    );
+
+    if (globalInstructions?.trim()) {
+      prompts.push(`[GLOBAL PREFERENCES]:\n${globalInstructions.trim()}`);
+    }
+
     if (projectInstructions?.trim()) {
-      const sanitized = projectInstructions.replace(
-        /If you cannot create an actual downloadable file in the current environment[\s\S]*?state the limitation briefly\./gi,
+      let sanitized = projectInstructions.replace(
+        /Do not dump raw script text into the chat stream if it exceeds 300 words\. Always format long-form script deliverables inside downloadable files/gi,
         'Deliver the complete narration script inside a downloadable file block named script_[short_topic_slug].txt. The chat environment automatically provides a 1-click Download button for the file.'
       );
       prompts.push(sanitized.trim());
@@ -260,12 +288,7 @@ export function useChat({
           }
         }
 
-        // If stream finished without any tokens, alert user with recommended action
-        if (!fullContent.trim()) {
-          fullContent = `> ⚠️ **Notice**: The selected free model did not return any tokens. It may be currently offline or rate-limited on OpenRouter.\n\n**Recommended Action:**\n- Switch to **Nemotron 3 Ultra** (nvidia/nemotron-3-ultra-550b-a55b:free) or **Dots 3 Note** in the model selector above.\n- Click **Regenerate** to retry.`;
-        }
-
-        // Finalize assistant message
+        // Finalize completed response
         const finalAssistantMsg: Message = {
           ...assistantMsg,
           content: fullContent,
@@ -332,6 +355,7 @@ export function useChat({
       activeProjectId,
       buildSystemPrompt,
       loadConversations,
+      setActiveConversationId,
     ]
   );
 
@@ -636,6 +660,9 @@ export function useChat({
 
   // Filtered conversations
   const filteredConversations = conversations.filter((c) => {
+    if (activeProjectId && c.project_id !== activeProjectId) {
+      return false;
+    }
     if (!searchFilter.trim()) return true;
     return c.title.toLowerCase().includes(searchFilter.toLowerCase());
   });

@@ -230,3 +230,4 @@ export function mergeResumedContent(original: string, continuation: string): str
 
   return `${cleanOriginal}${needsSpace ? ' ' : ''}${cleanContinuation}`;
 }
+

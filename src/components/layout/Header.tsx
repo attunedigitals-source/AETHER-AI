@@ -26,6 +26,7 @@ interface HeaderProps {
   onOpenShare: () => void;
   onRenameConversation: (id: string, newTitle: string) => Promise<void>;
   activeProject: Project | null;
+  onEditProject?: (project: Project) => void;
   onToggleSidebarMobile: () => void;
   theme: Theme;
   onToggleTheme: () => void;
@@ -43,6 +44,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenShare,
   onRenameConversation,
   activeProject,
+  onEditProject,
   onToggleSidebarMobile,
   theme,
   onToggleTheme,
@@ -77,10 +79,15 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Project Tag if conversation belongs to project */}
         {activeProject && (
-          <span className="hidden sm:inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs font-medium border border-amber-500/20">
+          <button
+            onClick={() => onEditProject?.(activeProject)}
+            title="Edit project instructions and configuration"
+            className="hidden sm:inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 text-xs font-medium border border-amber-500/20 transition-colors group cursor-pointer"
+          >
             <Folder className="w-3 h-3 text-amber-500" />
-            <span className="truncate max-w-[100px]">{activeProject.name}</span>
-          </span>
+            <span className="truncate max-w-[120px]">{activeProject.name}</span>
+            <Edit2 className="w-2.5 h-2.5 opacity-60 group-hover:opacity-100 transition-opacity" />
+          </button>
         )}
 
         {/* Title */}
@@ -163,4 +170,3 @@ export const Header: React.FC<HeaderProps> = ({
     </header>
   );
 };
-
