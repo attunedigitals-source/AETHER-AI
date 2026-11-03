@@ -359,7 +359,9 @@ class OpenRouterService {
 
     if (!effectiveApiKey) {
       res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
       res.setHeader('Connection', 'keep-alive');
 
       const simulatedMsg = `### OpenRouter API Key Required\n\nTo start chatting with free AI models, please configure your free OpenRouter API key:\n\n1. Visit [OpenRouter Keys](https://openrouter.ai/settings/keys) and create a free key.\n2. Open **Settings** (⚙ in the bottom left or top bar) → **OpenRouter API** and enter your key.\n3. Click **Save Preferences**.\n\nAll models ending in \`:free\` have $0 prompt and completion costs!`;
@@ -371,7 +373,9 @@ class OpenRouterService {
 
     // Set SSE headers
     res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders?.();
 

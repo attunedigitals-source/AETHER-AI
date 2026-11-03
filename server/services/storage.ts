@@ -79,7 +79,8 @@ class StorageService {
   private localData: LocalStoreData;
 
   constructor() {
-    this.localStorePath = path.resolve(process.cwd(), 'server', 'data', 'store.json');
+    const isVercel = process.env.VERCEL === '1';
+    this.localStorePath = isVercel ? path.resolve('/tmp', 'aether_store.json') : path.resolve(process.cwd(), 'server', 'data', 'store.json');
     this.localData = this.loadLocalStore();
 
     if (config.supabase.url && config.supabase.anonKey) {

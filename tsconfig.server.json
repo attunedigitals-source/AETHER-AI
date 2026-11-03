@@ -12,6 +12,6 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["server/**/*"]
+  "include": ["server/**/*", "api/**/*"]
 }
 

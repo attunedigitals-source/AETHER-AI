@@ -25,6 +25,7 @@ export function useChat({
   const [searchFilter, setSearchFilter] = useState('');
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const skipLoadMessagesRef = useRef<string | null>(null);
 
   // Load conversations list
   const loadConversations = useCallback(async () => {
@@ -47,6 +48,12 @@ export function useChat({
   useEffect(() => {
     if (!activeConversationId) {
       setMessages([]);
+      return;
+    }
+
+    // Skip reload if this conversation was just created and populated by sendMessage
+    if (skipLoadMessagesRef.current === activeConversationId) {
+      skipLoadMessagesRef.current = null;
       return;
     }
 
@@ -73,6 +80,7 @@ export function useChat({
       abortControllerRef.current?.abort();
       setIsStreaming(false);
     }
+    skipLoadMessagesRef.current = null;
     setActiveConversationId(null);
     setMessages([]);
     setStreamingContent('');
@@ -86,6 +94,7 @@ export function useChat({
         abortControllerRef.current?.abort();
         setIsStreaming(false);
       }
+      skipLoadMessagesRef.current = null;
       setActiveConversationId(id);
       setStreamingContent('');
     },
@@ -128,6 +137,7 @@ export function useChat({
         });
 
         convId = newConv.id;
+        skipLoadMessagesRef.current = newConv.id;
         setActiveConversationId(convId);
         setConversations((prev) => [newConv, ...prev]);
       }
@@ -147,7 +157,7 @@ export function useChat({
       // Optimistically append user message
       const updatedMessages = [...messages, userMsg];
       setMessages(updatedMessages);
-      await api.saveMessage(userMsg);
+      api.saveMessage(userMsg).catch((e) => console.error('Failed to save user message:', e));
 
       // Assistant placeholder
       const assistantMessageId = generateId('msg-asst');
@@ -239,11 +249,14 @@ export function useChat({
           activeVersionIndex: 0,
         };
 
-        setMessages((prev) =>
-          prev.map((m) => (m.id === assistantMessageId ? finalAssistantMsg : m))
-        );
+        setMessages((prev) => {
+          const exists = prev.some((m) => m.id === assistantMessageId);
+          return exists
+            ? prev.map((m) => (m.id === assistantMessageId ? finalAssistantMsg : m))
+            : [...prev, finalAssistantMsg];
+        });
 
-        await api.saveMessage(finalAssistantMsg);
+        api.saveMessage(finalAssistantMsg).catch((e) => console.error('Failed to save assistant message:', e));
       } catch (err: any) {
         if (err.name === 'AbortError') {
           console.log('Stream stopped by user.');

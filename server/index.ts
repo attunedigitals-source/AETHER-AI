@@ -31,6 +31,14 @@ app.use((req, res, next) => {
   next();
 });
 
+// Vercel Serverless URL rewrite path normalizer
+app.use((req, _res, next) => {
+  if (req.originalUrl && req.url !== req.originalUrl) {
+    req.url = req.originalUrl;
+  }
+  next();
+});
+
 // API Routes
 app.use('/api/models', modelsRouter);
 app.use('/api/chat', chatRouter);
@@ -52,7 +60,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 // Production client serving
-if (config.nodeEnv === 'production') {
+if (config.nodeEnv === 'production' && process.env.VERCEL !== '1') {
   const clientDist = path.resolve(__dirname, '../../dist');
   app.use(express.static(clientDist));
   app.get('*', (_req, res) => {
