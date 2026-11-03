@@ -1,7 +1,12 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { Conversation, Message, Attachment } from '../types';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { Conversation, Message, Attachment, TaskFrameworkState } from '../types';
 import { api, getHeaders } from '../lib/storage';
 import { generateId } from '../lib/utils';
+import {
+  analyzeTaskFrameworkState,
+  buildTaskContinuationPrompt,
+  mergeResumedContent,
+} from '../lib/taskFramework';
 
 interface UseChatProps {
   selectedModelId: string;
@@ -26,6 +31,11 @@ export function useChat({
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const skipLoadMessagesRef = useRef<string | null>(null);
+
+  // Compute active task framework state from conversation history & instructions
+  const taskState = useMemo<TaskFrameworkState>(() => {
+    return analyzeTaskFrameworkState(messages, projectInstructions);
+  }, [messages, projectInstructions]);
 
   // Load conversations list
   const loadConversations = useCallback(async () => {
@@ -101,7 +111,7 @@ export function useChat({
     [activeConversationId, isStreaming]
   );
 
-  // Stop streaming
+  // Stop active streaming generation
   const stopGeneration = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -110,20 +120,34 @@ export function useChat({
     setIsStreaming(false);
   }, []);
 
-  // Send message
+  // Helper to compile system prompts with framework continuity
+  const buildSystemPrompt = useCallback(() => {
+    const prompts: string[] = [];
+    if (globalInstructions?.trim()) prompts.push(globalInstructions.trim());
+    if (projectInstructions?.trim()) {
+      const sanitized = projectInstructions.replace(
+        /If you cannot create an actual downloadable file in the current environment[\s\S]*?state the limitation briefly\./gi,
+        'Deliver the complete narration script inside a downloadable file block named script_[short_topic_slug].txt. The chat environment automatically provides a 1-click Download button for the file.'
+      );
+      prompts.push(sanitized.trim());
+    }
+    return prompts.join('\n\n---\n\n');
+  }, [globalInstructions, projectInstructions]);
+
+  // Send a message & stream response with resilience
   const sendMessage = useCallback(
     async (
       content: string,
       attachments: Attachment[] = [],
-      overrideModelId?: string,
-      existingConvId?: string
+      customModelId?: string,
+      targetConvId?: string
     ) => {
-      if (!content.trim() && attachments.length === 0) return;
+      if (isStreaming) return;
 
-      const modelToUse = overrideModelId || selectedModelId;
-      let convId = existingConvId || activeConversationId;
+      const modelToUse = customModelId || selectedModelId;
+      let convId = targetConvId || activeConversationId;
 
-      // Create conversation on the fly if new
+      // Create conversation if starting fresh
       if (!convId) {
         const title =
           content.trim().length > 40
@@ -176,25 +200,11 @@ export function useChat({
       setIsStreaming(true);
       setStreamingContent('');
 
-      // Build system prompt combination with deliverable capability directive
-      const buildCombinedSystemPrompt = () => {
-        const prompts: string[] = [];
-        if (globalInstructions?.trim()) prompts.push(globalInstructions.trim());
-        if (projectInstructions?.trim()) {
-          const sanitized = projectInstructions.replace(
-            /If you cannot create an actual downloadable file in the current environment[\s\S]*?state the limitation briefly\./gi,
-            'Deliver the complete narration script inside a downloadable file block named script_[short_topic_slug].txt. The chat environment automatically provides a 1-click Download button for the file.'
-          );
-          prompts.push(sanitized.trim());
-        }
-        return prompts.join('\n\n---\n\n');
-      };
-
-      const combinedSystemPrompt = buildCombinedSystemPrompt();
-
+      const combinedSystemPrompt = buildSystemPrompt();
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
+      let fullContent = '';
       try {
         const response = await fetch('/api/chat/stream', {
           method: 'POST',
@@ -220,7 +230,6 @@ export function useChat({
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder('utf-8');
-        let fullContent = '';
         let buffer = '';
 
         while (true) {
@@ -260,6 +269,7 @@ export function useChat({
         const finalAssistantMsg: Message = {
           ...assistantMsg,
           content: fullContent,
+          is_interrupted: false,
           versions: [fullContent],
           activeVersionIndex: 0,
         };
@@ -277,13 +287,35 @@ export function useChat({
           console.log('Stream stopped by user.');
         } else {
           console.error('Streaming error:', err);
-          const errorMsg = `\n\n> ⚠️ **Error**: ${err.message || 'Unable to complete request'}`;
+        }
+
+        // If partial tokens were received, save them safely and flag as interrupted for 1-click continuation
+        if (fullContent && fullContent.trim().length > 0) {
+          const cleanPartial = fullContent.replace(/\n\n> ⚠️ \*\*Error\*\*[\s\S]*$/gi, '').trimEnd();
+          const interruptedMsg: Message = {
+            ...assistantMsg,
+            content: cleanPartial,
+            is_interrupted: true,
+            interrupted_reason: err.message || 'network_error',
+            versions: [cleanPartial],
+            activeVersionIndex: 0,
+          };
+
           setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMessageId
-                ? { ...m, content: (m.content || '') + errorMsg }
-                : m
-            )
+            prev.map((m) => (m.id === assistantMessageId ? interruptedMsg : m))
+          );
+          api.saveMessage(interruptedMsg).catch((e) => console.error('Failed to save interrupted message:', e));
+        } else {
+          // No content arrived before network disconnect
+          const errorMsg = `> ⚠️ **Network Interruption**: Connection dropped before receiving the response.\n\nClick **Resume Task** or **Regenerate** to continue executing this task without leaving the framework.`;
+          const failedMsg: Message = {
+            ...assistantMsg,
+            content: errorMsg,
+            is_interrupted: true,
+            interrupted_reason: err.message || 'network_error',
+          };
+          setMessages((prev) =>
+            prev.map((m) => (m.id === assistantMessageId ? failedMsg : m))
           );
         }
       } finally {
@@ -298,10 +330,124 @@ export function useChat({
       messages,
       selectedModelId,
       activeProjectId,
-      projectInstructions,
-      globalInstructions,
+      buildSystemPrompt,
       loadConversations,
     ]
+  );
+
+  // Resume an interrupted task seamlessly without restarting or leaving the framework
+  const resumeTask = useCallback(
+    async (targetMessageId?: string) => {
+      if (isStreaming) return;
+
+      const assistantMsgs = messages.filter((m) => m.role === 'assistant');
+      const targetMsg = targetMessageId
+        ? messages.find((m) => m.id === targetMessageId)
+        : assistantMsgs[assistantMsgs.length - 1];
+
+      if (!targetMsg || !targetMsg.content) return;
+
+      const currentTaskState = analyzeTaskFrameworkState(messages, projectInstructions);
+      const continuationPrompt = buildTaskContinuationPrompt(currentTaskState, targetMsg.content);
+
+      const targetIndex = messages.findIndex((m) => m.id === targetMsg.id);
+      const priorMessages = messages.slice(0, targetIndex);
+
+      const convId = targetMsg.conversation_id || activeConversationId;
+      if (!convId) return;
+
+      const modelToUse = targetMsg.model_id || selectedModelId;
+      setIsStreaming(true);
+      setStreamingContent(targetMsg.content);
+
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      try {
+        const baseSystemPrompt = buildSystemPrompt();
+        const combinedSystemPrompt = `${baseSystemPrompt}\n\n---\n\n[TASK CONTINUATION PROTOCOL]: You are resuming an interrupted generation. Do not restart. Pick up immediately from the exact cutoff point and continue the task without leaving the active framework.`;
+
+        // Send conversation history + partial response + resumption directive
+        const contextPayload = [
+          ...priorMessages.map((m) => ({
+            role: m.role,
+            content: m.content,
+            attachments: m.attachments,
+          })),
+          {
+            role: 'assistant',
+            content: targetMsg.content.replace(/\n\n> ⚠️ \*\*Error\*\*[\s\S]*$/gi, '').trimEnd(),
+          },
+          {
+            role: 'user',
+            content: continuationPrompt,
+          },
+        ];
+
+        const response = await fetch('/api/chat/stream', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({
+            modelId: modelToUse,
+            messages: contextPayload,
+            systemPrompt: combinedSystemPrompt,
+          }),
+          signal: controller.signal,
+        });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.body) throw new Error('No stream body');
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let continuationTokens = '';
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || !trimmed.startsWith('data:')) continue;
+            const dataStr = trimmed.replace(/^data:\s*/, '');
+            if (dataStr === '[DONE]') continue;
+
+            try {
+              const parsed = JSON.parse(dataStr);
+              if (parsed.content) {
+                continuationTokens += parsed.content;
+                setStreamingContent(mergeResumedContent(targetMsg.content, continuationTokens));
+              }
+            } catch (_) {}
+          }
+        }
+
+        const mergedContent = mergeResumedContent(targetMsg.content, continuationTokens);
+
+        const updatedMsg: Message = {
+          ...targetMsg,
+          content: mergedContent,
+          is_interrupted: false,
+          versions: [...(targetMsg.versions || []), mergedContent],
+          activeVersionIndex: (targetMsg.versions?.length || 1),
+        };
+
+        setMessages((prev) => prev.map((m) => (m.id === targetMsg.id ? updatedMsg : m)));
+        api.saveMessage(updatedMsg).catch((e) => console.error('Failed to save resumed message:', e));
+      } catch (err: any) {
+        console.error('Task resumption failed:', err);
+      } finally {
+        setIsStreaming(false);
+        setStreamingContent('');
+        abortControllerRef.current = null;
+      }
+    },
+    [isStreaming, messages, projectInstructions, buildSystemPrompt, activeConversationId, selectedModelId]
   );
 
   // Regenerate message
@@ -334,17 +480,9 @@ export function useChat({
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
+      let fullContent = '';
       try {
-        const prompts: string[] = [];
-        if (globalInstructions?.trim()) prompts.push(globalInstructions.trim());
-        if (projectInstructions?.trim()) {
-          const sanitized = projectInstructions.replace(
-            /If you cannot create an actual downloadable file in the current environment[\s\S]*?state the limitation briefly\./gi,
-            'Deliver the complete narration script inside a downloadable file block named script_[short_topic_slug].txt. The chat environment automatically provides a 1-click Download button for the file.'
-          );
-          prompts.push(sanitized.trim());
-        }
-        const combinedSystemPrompt = prompts.join('\n\n---\n\n');
+        const combinedSystemPrompt = buildSystemPrompt();
 
         const response = await fetch('/api/chat/stream', {
           method: 'POST',
@@ -364,7 +502,6 @@ export function useChat({
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const reader = response.body!.getReader();
         const decoder = new TextDecoder('utf-8');
-        let fullContent = '';
         let buffer = '';
 
         while (true) {
@@ -400,6 +537,7 @@ export function useChat({
                 ...m,
                 content: fullContent,
                 model_id: modelToUse,
+                is_interrupted: false,
                 versions: newVersions,
                 activeVersionIndex: newVersions.length - 1,
               };
@@ -419,6 +557,11 @@ export function useChat({
       } catch (err: any) {
         if (err.name !== 'AbortError') {
           console.error('Regenerate error:', err);
+          if (fullContent && fullContent.trim().length > 0) {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === messageId ? { ...m, is_interrupted: true, content: fullContent } : m))
+            );
+          }
         }
       } finally {
         setIsStreaming(false);
@@ -426,7 +569,7 @@ export function useChat({
         abortControllerRef.current = null;
       }
     },
-    [messages, selectedModelId]
+    [messages, selectedModelId, buildSystemPrompt]
   );
 
   // Edit user message (branching)
@@ -508,6 +651,8 @@ export function useChat({
     isLoadingConversations,
     searchFilter,
     setSearchFilter,
+    taskState,
+    resumeTask,
     sendMessage,
     stopGeneration,
     startNewChat,

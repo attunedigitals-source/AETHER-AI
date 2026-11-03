@@ -4,6 +4,7 @@ import { Header } from './Header';
 import { WelcomeScreen } from '../chat/WelcomeScreen';
 import { MessageList } from '../chat/MessageList';
 import { ChatInput } from '../chat/ChatInput';
+import { TaskProgressBar } from '../chat/TaskProgressBar';
 import { ApiKeySetupBanner } from '../settings/ApiKeySetupBanner';
 import { ModelInfoModal } from '../models/ModelInfoModal';
 import { ModelCompareModal } from '../chat/ModelCompareModal';
@@ -54,7 +55,7 @@ export const AppLayout: React.FC = () => {
     setSettings(updated);
   };
 
-  // Chat hook
+  // Chat hook with resilient task tracking & continuity
   const {
     conversations,
     activeConversation,
@@ -64,6 +65,8 @@ export const AppLayout: React.FC = () => {
     streamingContent,
     searchFilter,
     setSearchFilter,
+    taskState,
+    resumeTask,
     sendMessage,
     stopGeneration,
     startNewChat,
@@ -100,23 +103,21 @@ export const AppLayout: React.FC = () => {
   };
 
   const handleClearAllChats = async () => {
-    await api.deleteAllConversations();
-    startNewChat();
-    window.location.reload();
+    await deleteAllConversations();
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#FAF9F5] dark:bg-[#1C1B18] text-warm-900 dark:text-warm-50 font-sans">
+    <div className="flex h-screen w-screen overflow-hidden bg-warm-50 dark:bg-warm-900 text-warm-900 dark:text-warm-100 font-sans">
       {/* Sidebar Navigation */}
       <Sidebar
         conversations={conversations}
         activeConversationId={activeConversationId}
         onSelectConversation={selectConversation}
         onStartNewChat={startNewChat}
-        onRenameConversation={renameConversation}
+        onDeleteConversation={deleteConversation}
         onToggleStar={toggleStarConversation}
         onToggleArchive={toggleArchiveConversation}
-        onDeleteConversation={deleteConversation}
+        onRenameConversation={renameConversation}
         projects={projects}
         activeProjectId={activeProjectId}
         onSelectProject={setActiveProjectId}
@@ -152,6 +153,13 @@ export const AppLayout: React.FC = () => {
           onToggleTheme={toggleTheme}
         />
 
+        {/* Task Framework Progress & Interruption Recovery Bar */}
+        <TaskProgressBar
+          taskState={taskState}
+          onResumeTask={() => resumeTask()}
+          isStreaming={isStreaming}
+        />
+
         {/* Chat / Welcome Area */}
         <main className="flex-1 flex flex-col min-h-0 overflow-hidden">
           {messages.length === 0 ? (
@@ -170,6 +178,7 @@ export const AppLayout: React.FC = () => {
               onRegenerate={regenerateMessage}
               onEdit={editUserMessage}
               onFeedback={setMessageFeedback}
+              onResumeTask={resumeTask}
             />
           )}
 
@@ -180,6 +189,8 @@ export const AppLayout: React.FC = () => {
             isStreaming={isStreaming}
             selectedModel={selectedModel}
             initialPrompt={selectedPrompt}
+            taskState={taskState}
+            onResumeTask={() => resumeTask()}
           />
         </main>
       </div>
@@ -232,4 +243,3 @@ export const AppLayout: React.FC = () => {
     </div>
   );
 };
-

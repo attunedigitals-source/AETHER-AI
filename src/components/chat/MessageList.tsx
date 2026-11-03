@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Message, VerifiedFreeModel } from '../../types';
 import { MessageItem } from './MessageItem';
-import { ArrowDown, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 interface MessageListProps {
   messages: Message[];
@@ -11,6 +11,7 @@ interface MessageListProps {
   onRegenerate: (messageId: string, alternateModelId?: string) => void;
   onEdit: (messageId: string, newContent: string) => void;
   onFeedback: (messageId: string, feedback: 'like' | 'dislike' | null) => void;
+  onResumeTask?: (messageId: string) => void;
 }
 
 export const MessageList: React.FC<MessageListProps> = ({
@@ -21,6 +22,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   onRegenerate,
   onEdit,
   onFeedback,
+  onResumeTask,
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -51,6 +53,7 @@ export const MessageList: React.FC<MessageListProps> = ({
             onRegenerate={onRegenerate}
             onEdit={onEdit}
             onFeedback={onFeedback}
+            onResumeTask={onResumeTask}
           />
         );
       })}
@@ -66,4 +69,3 @@ export const MessageList: React.FC<MessageListProps> = ({
     </div>
   );
 };
-

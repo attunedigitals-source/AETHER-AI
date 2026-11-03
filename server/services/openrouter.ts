@@ -359,6 +359,14 @@ When asked to create, deliver, or export a file (such as script_*.txt, image_pro
     for (const msg of messages) {
       let textContent = msg.content || '';
 
+      // Clean assistant message from transient error alerts so models aren't confused
+      if (msg.role === 'assistant' && textContent) {
+        textContent = textContent
+          .replace(/\n\n> ⚠️ \*\*Error\*\*[\s\S]*$/gi, '')
+          .replace(/\n\n> ⚠️ \*\*Notice\*\*[\s\S]*$/gi, '')
+          .trimEnd();
+      }
+
       // If text attachments are present, append extracted contents to the user prompt cleanly
       if (msg.attachments && msg.attachments.length > 0) {
         const textAttachments = msg.attachments.filter((a) => !a.isImage);

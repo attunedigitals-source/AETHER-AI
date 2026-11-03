@@ -5,9 +5,10 @@ import {
   Paperclip,
   Loader2,
   AlertCircle,
-  Sparkles,
+  AlertTriangle,
+  Play,
 } from 'lucide-react';
-import { Attachment, VerifiedFreeModel } from '../../types';
+import { Attachment, VerifiedFreeModel, TaskFrameworkState } from '../../types';
 import { FilePreviewList } from './FilePreviewList';
 import { api } from '../../lib/storage';
 
@@ -17,6 +18,8 @@ interface ChatInputProps {
   isStreaming: boolean;
   selectedModel: VerifiedFreeModel | null;
   initialPrompt?: string;
+  taskState?: TaskFrameworkState;
+  onResumeTask?: () => void;
 }
 
 export const ChatInput: React.FC<ChatInputProps> = ({
@@ -25,6 +28,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   isStreaming,
   selectedModel,
   initialPrompt,
+  taskState,
+  onResumeTask,
 }) => {
   const [content, setContent] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -79,27 +84,26 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   };
 
   const processFile = async (file: File) => {
+    setIsUploading(true);
+    setUploadError(null);
     try {
-      setIsUploading(true);
-      setUploadError(null);
-      const parsed = await api.uploadFile(file);
-      setAttachments((prev) => [...prev, parsed]);
+      const attachment = await api.uploadFile(file);
+      setAttachments((prev) => [...prev, attachment]);
     } catch (err: any) {
-      console.error('File upload error:', err);
-      setUploadError(err.message || 'Failed to process file');
+      console.error('Upload failed:', err);
+      setUploadError(err.message || 'File upload failed');
     } finally {
       setIsUploading(false);
     }
   };
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const files = Array.from(e.target.files);
-      for (const file of files) {
-        processFile(file);
-      }
-      e.target.value = '';
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    for (let i = 0; i < files.length; i++) {
+      processFile(files[i]);
     }
+    e.target.value = '';
   };
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
@@ -115,8 +119,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const files = Array.from(e.dataTransfer.files);
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
       for (const file of files) {
         processFile(file);
       }
@@ -144,6 +148,25 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           <p className="text-sm font-medium text-claude-coral">
             Drop your documents or images here...
           </p>
+        </div>
+      )}
+
+      {/* Network Interruption Quick-Resume Pill */}
+      {taskState?.isInterrupted && onResumeTask && !isStreaming && (
+        <div className="mb-2 p-2.5 px-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs flex items-center justify-between shadow-xs animate-in fade-in duration-200">
+          <div className="flex items-center space-x-2">
+            <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+            <span>
+              Previous task output was cut off by network.
+            </span>
+          </div>
+          <button
+            onClick={onResumeTask}
+            className="flex items-center space-x-1 px-3 py-1 rounded-lg bg-claude-coral hover:bg-claude-coral-hover text-white font-medium transition-all shadow-xs active:scale-95"
+          >
+            <Play className="w-3 h-3 fill-white" />
+            <span>Resume Task</span>
+          </button>
         </div>
       )}
 
@@ -244,4 +267,3 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     </div>
   );
 };
-

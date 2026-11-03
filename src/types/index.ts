@@ -36,6 +36,32 @@ export interface Message {
   feedback?: 'like' | 'dislike' | null;
   versions?: string[]; // for branching / editing history
   activeVersionIndex?: number;
+  is_interrupted?: boolean;
+  interrupted_reason?: string;
+  task_stage?: string;
+}
+
+export interface TaskStageInfo {
+  index: number;
+  id: string;
+  title: string;
+  shortTitle: string;
+  status: 'completed' | 'active' | 'pending';
+}
+
+export interface TaskFrameworkState {
+  isConfigured: boolean;
+  frameworkName: string;
+  currentStage: string;
+  stageIndex: number;
+  totalStages: number;
+  stages: TaskStageInfo[];
+  lastMilestone?: string;
+  pendingDeliverable?: string;
+  isInterrupted: boolean;
+  interruptedMessageId?: string;
+  snippetAtInterruption?: string;
+  canResume: boolean;
 }
 
 export interface Conversation {
@@ -48,6 +74,7 @@ export interface Conversation {
   is_starred: boolean;
   created_at: string;
   updated_at: string;
+  task_state?: TaskFrameworkState;
 }
 
 export interface Project {
@@ -87,4 +114,3 @@ export interface OpenRouterConfig {
   appName: string;
   siteUrl: string;
 }
-

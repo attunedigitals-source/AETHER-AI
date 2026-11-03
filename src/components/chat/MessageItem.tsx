@@ -12,6 +12,7 @@ import {
   Bot,
   Play,
   Download,
+  AlertTriangle,
 } from 'lucide-react';
 import { Message, VerifiedFreeModel } from '../../types';
 import { MessageContent } from './MessageContent';
@@ -24,6 +25,7 @@ interface MessageItemProps {
   onRegenerate: (messageId: string, alternateModelId?: string) => void;
   onEdit: (messageId: string, newContent: string) => void;
   onFeedback: (messageId: string, feedback: 'like' | 'dislike' | null) => void;
+  onResumeTask?: (messageId: string) => void;
 }
 
 export const MessageItem: React.FC<MessageItemProps> = ({
@@ -32,6 +34,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   onRegenerate,
   onEdit,
   onFeedback,
+  onResumeTask,
 }) => {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -39,6 +42,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   const [showModelPicker, setShowModelPicker] = useState(false);
 
   const isUser = message.role === 'user';
+  const wordCount = message.content ? message.content.trim().split(/\s+/).filter(Boolean).length : 0;
 
   const handleCopy = async () => {
     try {
@@ -68,15 +72,13 @@ export const MessageItem: React.FC<MessageItemProps> = ({
     setIsEditing(false);
   };
 
-  const handleContinue = () => {
-    onRegenerate(message.id);
-  };
-
   return (
     <div
       className={`group w-full py-5 px-4 md:px-6 transition-colors ${
         isUser
           ? 'bg-transparent'
+          : message.is_interrupted
+          ? 'bg-amber-500/5 dark:bg-amber-950/20 border-y border-amber-500/30'
           : 'bg-warm-100/60 dark:bg-warm-900/40 border-y border-warm-200/50 dark:border-warm-850/50'
       }`}
     >
@@ -88,8 +90,8 @@ export const MessageItem: React.FC<MessageItemProps> = ({
               You
             </div>
           ) : (
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-claude-coral to-amber-500 text-white flex items-center justify-center shadow-sm">
-              <Sparkles className="w-4 h-4" />
+            <div className={`w-8 h-8 rounded-full ${message.is_interrupted ? 'bg-amber-500' : 'bg-gradient-to-tr from-claude-coral to-amber-500'} text-white flex items-center justify-center shadow-sm`}>
+              {message.is_interrupted ? <AlertTriangle className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
             </div>
           )}
         </div>
@@ -105,6 +107,11 @@ export const MessageItem: React.FC<MessageItemProps> = ({
               {!isUser && message.model_id && (
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-warm-200/60 dark:bg-warm-800 text-warm-600 dark:text-warm-400 font-mono">
                   {message.model_id.replace(':free', '')}
+                </span>
+              )}
+              {message.is_interrupted && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-sans font-medium bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                  Interrupted by Network
                 </span>
               )}
             </div>
@@ -154,6 +161,38 @@ export const MessageItem: React.FC<MessageItemProps> = ({
             <MessageContent content={message.content} />
           )}
 
+          {/* Interruption Recovery Banner */}
+          {!isUser && message.is_interrupted && (
+            <div className="mt-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex items-center space-x-2">
+                <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                <div>
+                  <span className="font-semibold">Network interrupted response.</span>{' '}
+                  <span className="text-warm-600 dark:text-warm-400">
+                    {wordCount} words preserved. You can resume without restarting.
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                {onResumeTask && (
+                  <button
+                    onClick={() => onResumeTask(message.id)}
+                    className="flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-claude-coral hover:bg-claude-coral-hover text-white font-medium shadow-sm transition-all active:scale-95"
+                  >
+                    <Play className="w-3 h-3 fill-white" />
+                    <span>Resume Task</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => onRegenerate(message.id)}
+                  className="px-2.5 py-1 rounded-lg hover:bg-amber-500/20 text-warm-700 dark:text-warm-300 transition-colors"
+                >
+                  Restart Step
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Action buttons footer */}
           {!isEditing && (
             <div className="flex items-center space-x-1 mt-3 text-warm-400 opacity-80 md:opacity-0 group-hover:opacity-100 transition-opacity">
@@ -188,6 +227,18 @@ export const MessageItem: React.FC<MessageItemProps> = ({
                   >
                     <Download className="w-3.5 h-3.5" />
                   </button>
+
+                  {/* Quick Resume Button if interrupted */}
+                  {message.is_interrupted && onResumeTask && (
+                    <button
+                      onClick={() => onResumeTask(message.id)}
+                      title="Resume interrupted generation"
+                      className="flex items-center space-x-1 px-2.5 py-1 rounded-md text-xs font-medium bg-claude-coral hover:bg-claude-coral-hover text-white transition-colors"
+                    >
+                      <Play className="w-3 h-3 fill-white" />
+                      <span>Resume</span>
+                    </button>
+                  )}
 
                   {/* Regenerate with same model */}
                   <button
